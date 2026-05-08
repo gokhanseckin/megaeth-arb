@@ -1,0 +1,13 @@
+[package]
+name = "searcher-pools"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+alloy-primitives = { workspace = true }
+dashmap = { workspace = true }
+serde = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }

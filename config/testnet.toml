@@ -1,0 +1,23 @@
+# MegaETH testnet config — for local & integration testing.
+# All values are placeholders; populate from current testnet faucet/docs.
+
+[network]
+name        = "megaeth-testnet"
+chain_id    = 6342                              # TODO: confirm testnet chain id
+rpc_urls    = ["https://carrot.megaeth.com/rpc"]
+realtime_ws = "wss://carrot.megaeth.com/ws"
+
+[aave]
+pool = "0x0000000000000000000000000000000000000000"
+
+# Empty dex/token lists — testnet pools are minimal.
+dexes  = []
+tokens = []
+
+[risk]
+max_loan_usd       = 100.0
+min_profit_usd     = 0.01
+daily_loss_cap_usd = 10.0
+
+[metrics]
+listen = "127.0.0.1:9301"

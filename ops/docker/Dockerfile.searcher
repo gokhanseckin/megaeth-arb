@@ -1,0 +1,18 @@
+# Multi-stage build for the Rust searcher binary.
+FROM rust:1.83-slim-bookworm AS builder
+WORKDIR /build
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pkg-config libssl-dev ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+COPY searcher/ ./searcher/
+WORKDIR /build/searcher
+RUN cargo build --release -p searcher-bin
+
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /build/searcher/target/release/searcher /usr/local/bin/searcher
+COPY config/ /etc/megaeth-arb/config/
+ENTRYPOINT ["/usr/local/bin/searcher"]
+CMD ["--config", "/etc/megaeth-arb/config/mainnet.toml", "--dry-run"]

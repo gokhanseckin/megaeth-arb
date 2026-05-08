@@ -1,0 +1,51 @@
+# MegaETH mainnet config.
+# Addresses below are PLACEHOLDERS — verify each against authoritative sources
+# before deploying or running with real funds:
+#   * Aave V3 Pool — Aave governance proposal "Deploy Aave V3 to MegaETH" + the
+#     deployed UI on app.aave.com (network: MegaETH).
+#   * DEX factories — DefiLlama MegaETH chain page, sorted by 24h volume.
+#   * Token addresses — chain explorer (canonical bridged USDC, WETH, etc.).
+
+[network]
+name        = "megaeth-mainnet"
+chain_id    = 6342                    # TODO: confirm — MegaETH advertised chain id
+rpc_urls    = [
+    "https://carrot.megaeth.com/rpc", # TODO: replace with sequencer endpoint(s) we have access to
+]
+realtime_ws = "wss://carrot.megaeth.com/ws"   # TODO: confirm Realtime API endpoint
+
+[aave]
+pool = "0x0000000000000000000000000000000000000000"  # TODO: Aave V3 Pool on MegaETH
+
+[[dexes]]
+name    = "GTE"
+kind    = "uniswap_v2"                # placeholder — confirm GTE pool model
+factory = "0x0000000000000000000000000000000000000000"
+
+[[dexes]]
+name    = "<dex2>"
+kind    = "uniswap_v3"
+factory = "0x0000000000000000000000000000000000000000"
+
+[[tokens]]
+symbol   = "WETH"
+address  = "0x0000000000000000000000000000000000000000"  # TODO
+decimals = 18
+
+[[tokens]]
+symbol   = "USDC"
+address  = "0x0000000000000000000000000000000000000000"  # TODO
+decimals = 6
+
+[[tokens]]
+symbol   = "USDe"
+address  = "0x0000000000000000000000000000000000000000"  # TODO
+decimals = 18
+
+[risk]
+max_loan_usd       = 5_000.0
+min_profit_usd     = 1.0
+daily_loss_cap_usd = 50.0
+
+[metrics]
+listen = "127.0.0.1:9300"

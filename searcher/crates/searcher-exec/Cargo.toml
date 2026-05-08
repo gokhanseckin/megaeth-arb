@@ -1,0 +1,16 @@
+[package]
+name = "searcher-exec"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+alloy = { workspace = true }
+alloy-primitives = { workspace = true }
+searcher-net = { workspace = true }
+searcher-core = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }

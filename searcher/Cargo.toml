@@ -1,0 +1,70 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/searcher-core",
+    "crates/searcher-net",
+    "crates/searcher-pools",
+    "crates/searcher-exec",
+    "crates/searcher-bin",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+publish = false
+rust-version = "1.80"
+
+[workspace.dependencies]
+# Internal
+searcher-core   = { path = "crates/searcher-core" }
+searcher-net    = { path = "crates/searcher-net" }
+searcher-pools  = { path = "crates/searcher-pools" }
+searcher-exec   = { path = "crates/searcher-exec" }
+
+# EVM stack — alloy supersedes ethers-rs and is the standard going forward.
+alloy           = { version = "0.8", features = ["full", "node-bindings"] }
+alloy-primitives = { version = "0.8", features = ["serde"] }
+
+# Async runtime / networking
+tokio           = { version = "1", features = ["full"] }
+tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
+futures         = "0.3"
+reqwest         = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "http2"] }
+
+# Data
+dashmap         = "6"
+serde           = { version = "1", features = ["derive"] }
+serde_json      = "1"
+toml            = "0.8"
+
+# Big-int math (re-exported by alloy-primitives, but pinning explicitly for clarity)
+ruint           = { version = "1", features = ["serde"] }
+
+# Observability
+tracing         = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+metrics         = "0.24"
+metrics-exporter-prometheus = "0.16"
+
+# Errors
+anyhow          = "1"
+thiserror       = "2"
+
+# CLI
+clap            = { version = "4", features = ["derive", "env"] }
+
+# Testing
+proptest        = "1"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+debug = "line-tables-only"
+strip = "debuginfo"
+
+[profile.bench]
+lto = "fat"
+codegen-units = 1
+debug = true

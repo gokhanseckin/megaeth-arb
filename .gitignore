@@ -1,0 +1,32 @@
+# Foundry
+contracts/cache/
+contracts/out/
+contracts/broadcast/
+contracts/lib/
+contracts/.gas-snapshot
+
+# Rust
+searcher/target/
+**/*.rs.bk
+
+# Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# Build artifacts
+dist/
+build/
+*.log
+
+# OS
+Thumbs.db

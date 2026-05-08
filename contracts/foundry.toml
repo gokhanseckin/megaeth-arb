@@ -1,0 +1,28 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+test = "test"
+script = "script"
+solc_version = "0.8.26"
+optimizer = true
+optimizer_runs = 1_000_000
+via_ir = false
+bytecode_hash = "none"
+cbor_metadata = false
+evm_version = "cancun"
+gas_reports = ["ArbExecutor"]
+fs_permissions = [{ access = "read", path = "./" }]
+
+[profile.ci]
+verbosity = 4
+fuzz = { runs = 10_000 }
+
+[fmt]
+line_length = 120
+tab_width = 4
+bracket_spacing = false
+int_types = "long"
+multiline_func_header = "params_first"
+quote_style = "double"
+number_underscore = "thousands"
