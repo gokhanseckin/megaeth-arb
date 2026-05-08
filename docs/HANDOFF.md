@@ -6,14 +6,18 @@
 
 ## Where we are
 
-Phase 0 (scaffold) and Phase 1 (real addresses) are done. Branch `phase-1/addresses` is open as [PR #1](https://github.com/gokhanseckin/megaeth-arb/pull/1) — verify it's merged into `main` before starting Phase 2 work, or rebase Phase 2 onto whichever branch is current.
+Phase 0 (scaffold), Phase 1 (real addresses, 47 pools), and **Phase 2 step 1 (V3 single-tick swap math + byte-exact parity vs the Kumbaya USDT0/USDm 1bps pool)** are done.
 
 What's already in:
 
-- **Foundry workspace** in [contracts/](../contracts/). `ArbExecutor.sol` has the Aave V3 flash-loan callback wired and a V2-pair swap path. **No V3 swap support yet.** 5/5 forge tests pass.
-- **Cargo workspace** in [searcher/](../searcher/), 5 crates. V2 swap math byte-equivalent to the Solidity lib (parity-tested). **No V3 math yet.** 5/5 cargo tests pass.
+- **Foundry workspace** in [contracts/](../contracts/). `ArbExecutor.sol` handles the Aave V3 flash-loan callback for V2-pair routes; `probe/V3SwapProbe.sol` is the off-chain quoting helper used by the parity test. V3 executor support deferred to Phase 3.
+- **Cargo workspace** in [searcher/](../searcher/), 5 crates. V2 + V3 swap math byte-equivalent to canonical Uniswap, both parity-tested. `searcher-core` has 17 cargo tests (15 unit/property + 1 V2-cycle + 1 offline-fixture) plus 1 ignored online parity test.
+- **V3 math**: [searcher/crates/searcher-core/src/v3.rs](../searcher/crates/searcher-core/src/v3.rs), public surface `v3_amount_out_single_tick(sqrtPriceX96, L, amount_in, fee_pips, zero_for_one) -> V3Quote`. Single-tick approximation valid at MVP loan sizes; full tick-walking is Phase 4.
+- **Parity infrastructure**: [tests/v3_parity.rs](../searcher/crates/searcher-core/tests/v3_parity.rs) drives the live USDT0/USDm 1bps Kumbaya pool via `eth_call` + `stateOverride`, injecting `V3SwapProbe` runtime bytecode at a virtual address. 100/100 byte-exact against the chain at a pinned block. Recorded fixtures replay deterministically in CI via [tests/v3_offline.rs](../searcher/crates/searcher-core/tests/v3_offline.rs).
 - **Config** in [config/mainnet.toml](../config/mainnet.toml): chain 4326, Aave V3 Pool, 8 reserve tokens (3 flash-loanable: USDm/USDe/USDT0), 2 DEXs (Kumbaya, Prismfi), 47 pools sorted by fee tier.
 - **CI** in [.github/workflows/ci.yml](../.github/workflows/ci.yml): forge test/fmt + cargo test/clippy/fmt on push.
+
+**Critical gotcha** (saved to memory; flagging here too): when comparing Rust pool-math to live `eth_call`, **pin every call to the same `BlockId`**. MegaETH's 10ms mini-blocks otherwise drift the pool state mid-test and surface ~5e-11 relative deltas that look like math bugs but are pure state drift.
 
 ## Strategy in one paragraph
 
@@ -43,12 +47,25 @@ Then track **opportunity lifetime**: from first detection to first sim where the
 
 ## What needs to be built
 
-### 1. V3 swap math in Rust (`searcher/crates/searcher-core/src/v3.rs`)
+### 1. V3 swap math in Rust (`searcher/crates/searcher-core/src/v3.rs`) — ✅ done
 
-- Inputs: `slot0` (`sqrtPriceX96`, `tick`), `liquidity` (active L), `fee_pips`, `tick_spacing`, plus a tick-data window for tick crossings.
-- For MVP loan sizes, **single-tick approximation** is acceptable: assume the swap doesn't cross a tick. This is true for the bulk of small swaps in deep pools.
-- Add a parity test: simulate vs `eth_call` against a forked node, 100+ random inputs, must match exactly.
-- Reference implementation to crib from: [Uniswap v3-core SwapMath.sol](https://github.com/Uniswap/v3-core/blob/main/contracts/libraries/SwapMath.sol). There's also the [`uniswap-v3-math`](https://crates.io/crates/uniswap-v3-math) crate; evaluate before pulling in — we want byte-exact and minimal deps.
+Landed: hand-written port of Uniswap V3 `SwapMath.computeSwapStep` (single-tick), `SqrtPriceMath`, and `FullMath`. U256-only, ~280 LOC, no `uniswap-v3-math` dep. Public surface is a single function:
+
+```rust
+pub fn v3_amount_out_single_tick(
+    sqrt_price_x96: U256, liquidity: u128, amount_in: U256,
+    fee_pips: u32, zero_for_one: bool,
+) -> Result<V3Quote, V3Error>;
+```
+
+Parity vs the live USDT0/USDm 1bps Kumbaya pool (`0x6c8E5D…1D8f`) is **byte-exact 100/100** at the latest pinned block, via a custom `V3SwapProbe.sol` injected at a virtual address through `eth_call` + `stateOverride`. CI replays 100 recorded fixtures deterministically through [tests/v3_offline.rs](../searcher/crates/searcher-core/tests/v3_offline.rs); regenerate via:
+
+```bash
+MEGAETH_RPC=https://mainnet.megaeth.com/rpc REGEN_FIXTURES=1 \
+    cargo test -p searcher-core --test v3_parity -- --include-ignored --nocapture
+```
+
+Multi-tick walking is still Phase 4 — at MVP loan sizes ($100–$1k in deep stablecoin pools) the swap stays inside the active tick.
 
 ### 2. State ingestion (`searcher/crates/searcher-net/src/realtime.rs`)
 
@@ -98,38 +115,46 @@ I'm continuing work on the MegaETH flash-loan arbitrage bot in this repo
 (github.com/gokhanseckin/megaeth-arb). Read docs/HANDOFF.md and CLAUDE.md
 first — they have the full context.
 
-Phase 0 (scaffold) and Phase 1 (real addresses) are done. We have:
-- Aave V3 Pool, 8 reserve tokens, and 47 pools across Kumbaya + Prismfi
-  in config/mainnet.toml.
-- A V2 math lib + Solidity ArbExecutor that handles the Aave callback for
-  V2-pair routes. Both DEXs are V3 forks though, so V3 support is the
-  critical path.
-- Cargo workspace builds cleanly with V2 math + parity tests.
+Where we are: Phase 0 (scaffold) ✓, Phase 1 (real addresses, 47 pools)
+✓, Phase 2 step 1 (V3 single-tick swap math + byte-exact parity vs the
+Kumbaya USDT0/USDm 1bps pool via eth_call + stateOverride) ✓ — see
+searcher/crates/searcher-core/src/v3.rs and tests/v3_parity.rs.
 
 The MVP is **watch-only**: a passive observer that detects cross-venue
-arb opportunities, logs them with theoretical profit + loan size, and
-tracks how long each opportunity stayed profitable before closing. No
-transactions, no signing, no Aave calls. We're isolating the detection
-problem from the execution problem.
+arb opportunities, logs theoretical profit + loan size, and tracks how
+long each opportunity stayed profitable before closing. No transactions,
+no signing, no Aave calls. We're isolating detection from execution.
 
-Primary cycle to validate: USDT0/USDm @ 1bps Kumbaya ⇄ Prismfi (clearing
-bar ~7 bps + gas).
+Primary cycle to validate: USDT0/USDm @ 1bps Kumbaya ⇄ Prismfi
+(clearing bar ~7 bps + gas).
 
-Acceptance criteria are in docs/HANDOFF.md. The recommended order:
+Recommended next order (Phase 2 steps 2-4 from docs/HANDOFF.md):
 
-1. V3 swap math in searcher-core (single-tick approximation), with a
-   parity test against eth_call against the forked mainnet node.
-2. Polling-based pool state cache (100-200ms cadence is fine for MVP;
-   skip Realtime WS until polling becomes the bottleneck).
-3. Opportunity detector that emits OpportunityOpened/OpportunityClosed
-   events with lifetimes and theoretical profit, JSON-logged to stdout.
-4. Run for an hour against mainnet, confirm structured logs look right,
-   commit.
+1. Polling-based pool state cache (searcher-pools extension). At
+   100-200ms cadence, batch eth_call slot0() + liquidity() for every V3
+   pool in config/mainnet.toml. Pin every batch to the same block —
+   MegaETH 10ms blocks otherwise drift state mid-batch and create ghost
+   mismatches (this lesson is in the auto-memory; HANDOFF.md flags it).
+2. Opportunity detector (searcher-core::cycle extension). For each
+   cross-venue same-pair-same-fee match in the config, enumerate both
+   directions, sweep loan sizes ($100/$500/$1k), compute net edge with
+   v3_amount_out_single_tick. Emit OpportunityOpened / OpportunityClosed
+   events with lifetimes + theoretical profit.
+3. Watch-only binary mode: --watch-only flag in searcher-bin wires
+   cache + detector together, JSON-logs every event to stdout. Run
+   cleanly for 1h against mainnet, confirm logs look right, commit.
 
-Please use Opus 4.7 at high effort (not max effort). When you need
-non-canonical project data (addresses, DEX URLs, etc), ask me directly
-rather than spawning a research agent — I'll paste it.
+Deployment: target is a Hetzner Cloud CX43 (region TBD). After step 3
+lands and the watcher proves opportunities are real, write a
+Terraform-imported infra/ + Makefile + searcher.service systemd unit
+in a follow-up commit. Skip until there's a real binary to deploy.
 
-Start by reading docs/HANDOFF.md, then propose a concrete plan for step 1
-(V3 math) and confirm the approach with me before writing code.
+Use Opus 4.7 at high effort (not max). Ask me for non-canonical project
+data (addresses, DEX URLs, sequencer region) instead of spawning a
+research agent — I'll paste it.
+
+Start by reading docs/HANDOFF.md, then propose a concrete plan for
+step 2 (polling pool state cache) — module shape, target pool selection
+from config, polling cadence, error handling on batch slot0/liquidity
+fetches — and confirm with me before writing code.
 ```
