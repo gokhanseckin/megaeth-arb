@@ -42,7 +42,12 @@ impl PoolRegistry {
 
     /// Apply a parsed state diff to the cached pool. Returns true if the pool
     /// is tracked. Phase 2: wire to slot→field maps for V2 reserves.
-    pub fn apply_diff(&self, _addr: Address, _slot: alloy_primitives::B256, _value: alloy_primitives::B256) -> bool {
+    pub fn apply_diff(
+        &self,
+        _addr: Address,
+        _slot: alloy_primitives::B256,
+        _value: alloy_primitives::B256,
+    ) -> bool {
         // TODO(phase-2): map slot → field, patch reserves in place
         false
     }
