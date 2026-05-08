@@ -34,16 +34,24 @@ flashloan_assets = [
     "0xB8CE59FC3717ada4C02eaDF9682A9e934F625ebb",  # USDT0
 ]
 
-# DEX list — TODO: fill with top 2-3 by 24h volume on MegaETH.
-[[dexes]]
-name    = "<dex1>"
-kind    = "uniswap_v2"
-factory = "0x0000000000000000000000000000000000000000"
+# DEX list. Each entry verified on-chain (factory bytecode present, fee
+# tiers configured, representative pools queried for liquidity).
 
 [[dexes]]
-name    = "<dex2>"
+name    = "kumbaya"
 kind    = "uniswap_v3"
-factory = "0x0000000000000000000000000000000000000000"
+factory = "0x68b34591f662508076927803c567Cc8006988a09"
+# Standard V3 fee tiers, all configured: 100/500/3000/10000 → tickSpacing 1/10/60/200.
+# Owner: 0xC2F467A2d602172E1d4113bd2C4b77De5634Ae4a.
+# Notable live pools (raw `liquidity()` snapshot 2026-05-08):
+#   USDe/USDm   1bps  0xc9CA2086E008F13208193FB080BadD9738910829   L=3.0e27
+#   USDm/WETH   30bps 0x587F6eeAfc7Ad567e96eD1B62775fA6402164b22   L=5.1e23
+#   WETH/wstETH 1bps  0xAAe2E53d8068e84f5993096039BafCc07a7d9Ae4   L=8.0e22
+#   USDT0/USDm  1bps  0x6c8E5D463a2473b1A8bcd87e1cEA2724203A1D8f   L=3.0e21
+#   USDT0/WETH  30bps 0x2809696F2e42eB452C32C3d0A2Dc540858C14125   L=1.1e17
+
+# TODO: add a 2nd DEX so cross-venue arb is possible; intra-Kumbaya
+# (cross-fee-tier) arb has very thin edge.
 
 # Token allowlist — every reserve in Aave V3 MegaETH plus any extras worth swapping through.
 # Symbol, address, decimals confirmed via on-chain `symbol()/decimals()` calls.
