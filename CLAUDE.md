@@ -93,4 +93,21 @@ Production hot wallets must be a dedicated key with **no upgrade or sweep author
 
 ## Phased Roadmap
 
-See [.claude/plans/purring-plotting-lollipop.md](/Users/gokhanseckin/.claude/plans/purring-plotting-lollipop.md) for the full plan. Current phase: **Phase 0 — setup**.
+See [docs/PLAN.md](docs/PLAN.md) for the full plan. **Current scope: watch-only MVP.**
+
+### MVP scope (revised)
+
+The first deliverable is a **passive observer** that does not execute trades. It:
+
+1. Connects to MegaETH Realtime API (or polls if WS isn't ready) and watches the registered pool set.
+2. Detects when a cross-venue cycle becomes theoretically profitable (gross edge clears Σ pool fees + Aave 5 bps + estimated gas + safety).
+3. Logs each opportunity with: timestamp, cycle path, theoretical profit USD, loan size used in sim, gas estimate.
+4. Tracks **opportunity lifetime** — from "first profitable" to "no longer profitable" — and logs that duration on close.
+
+This isolates the *detection* problem (correctness of V3 math, latency of state ingestion, profitability gating) from the *execution* problem (atomic on-chain swaps + flash loan). Once the watcher reliably surfaces real opportunities and we understand their typical lifetime, we extend `ArbExecutor` with V3 swap support and start submitting.
+
+Watch-mode is also the empirical answer to "is this strategy worth shipping" — if the watcher logs zero clearings-the-bar opportunities for a week, fix the strategy before writing any execution code.
+
+### V3 swap math is the critical path
+
+Both DEXs (Kumbaya, Prismfi) are Uniswap V3 forks. The detector needs Rust V3 swap math byte-equivalent to `pool.swap()`. Single-tick approximation is acceptable for the MVP loan sizes ($100s-$1k); full tick-walking lands when loan sizes grow.
