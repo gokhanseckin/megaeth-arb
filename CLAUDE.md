@@ -11,6 +11,45 @@ The repo is a polyglot monorepo:
 - **`searcher/`** — Cargo workspace (Rust). Off-chain bot that consumes the MegaETH Realtime WS, maintains a pool state cache, detects opportunities, simulates them in pure Rust math, and submits signed txs.
 - **`config/`** — Per-network TOML: chain RPC, Aave/DEX addresses, token allowlist, gas params, caps.
 
+## MegaETH Aave V3 — what's flash-loanable
+
+Aave V3 on MegaETH only allows flash-loan borrowing of **3 stablecoins**: `USDm`, `USDe`, `USDT0`. Other reserves (WETH, BTCb, wstETH, wrsETH, ezETH, plus the borrowable stables) can be supplied/borrowed normally but not flash-loaned.
+
+**Strategy implication.** Every arb cycle must start *and end* in one of the three borrowable stables. Intermediate hops can route through any token on any DEX. Triangular shapes look like `USDT0 → WETH → USDC → USDT0` or `USDe → BTCb → USDT0 → USDe`.
+
+## Fee discipline (central constraint)
+
+Every leg's fee compounds. For a candidate cycle to fire, the **gross edge** must clear:
+
+```
+Σ(pool fees on path) + Aave premium (5 bps) + gas_cost + safety_margin
+```
+
+- **Prefer 1 bps and 5 bps pools.** These are the stablecoin tiers. A 2-leg cycle in 1bps pools needs only ~7-8 bps of edge to clear fees+premium (still need to add gas + margin).
+- **30 bps tolerable on a directional leg**, but not for both sides of a balanced arb — a 30/30/aave cycle needs ~65 bps of edge before it even looks at gas.
+- **1% pools generally infeasible.** Don't enumerate cycles that touch them unless investigating low-activity stale-price opportunities (low-prob, high-variance).
+- **Log fee total alongside expected output** when proposing cycles, so the user can sanity-check.
+
+The pool registry in [config/mainnet.toml](config/mainnet.toml) is sorted into low-fee, mid-fee, and high-fee buckets accordingly.
+
+### Cross-venue same-pair pools (2-leg arb candidates)
+
+These are the pairs where both DEXs have the same fee tier — pure 2-leg arb works without needing a third hop.
+
+| Pair | Fee | Kumbaya | Prismfi | Why this matters |
+|---|---|---|---|---|
+| **USDT0/USDm** | **1bps** | `0x6c8E5D…1D8f` | `0x41cb3dd…f869` | **Killer pair.** 2 + 5 (Aave) = 7 bps clearing bar. |
+| WETH/USDm | 30bps | `0x587F6e…4b22` | `0xc2fac0…9d32` | 60 + 5 = 65 bps. Only fires on directional dislocation. |
+| MEGA/USDm | 30bps | `0xA8275D…7764` | `0x36c062…e9f6` | Same 65 bps bar. |
+| MEGA/USDT0 | 30bps | `0x9F4cEa…b2cd` | `0x3a62f0…7c46` | Tiny pools both sides, mostly logged. |
+| BTC.b/USDm | 30bps | `0xc1838B…c9db` | `0x2a69d0…2aec` | Prismfi side is sub-$1k volume. |
+| MEGA/WETH | 30bps/100bps | `0x549257…00EB` (1%), `0x7a37e1…3d8D` (1%) | `0x8c2a65…04df` (30bps), `0x9fe7a4…f663` (1%) | Cross-fee mismatch — not a clean 2-leg cycle. |
+| cUSD/USDm | 100bps/100bps | `0xEDB8a6…99d3` | `0xf428be…28ef` | 2% pool fees; ignore. |
+
+**Phase 1 fork test should target `USDT0/USDm @ 1bps` cross-venue first** — the only cycle where the math is reliably above-water at typical gas prices.
+
+Authoritative addresses live in [config/mainnet.toml](config/mainnet.toml). Source: [bgd-labs/aave-address-book/src/AaveV3MegaEth.sol](https://github.com/bgd-labs/aave-address-book/blob/main/src/AaveV3MegaEth.sol).
+
 ## Architectural Conventions
 
 - **Atomic-or-revert.** The Solidity executor enforces `minProfit` on-chain. Off-chain math is the *prediction*; the contract is the *backstop*. Never rely solely on off-chain checks for safety.
@@ -54,4 +93,21 @@ Production hot wallets must be a dedicated key with **no upgrade or sweep author
 
 ## Phased Roadmap
 
-See [.claude/plans/purring-plotting-lollipop.md](/Users/gokhanseckin/.claude/plans/purring-plotting-lollipop.md) for the full plan. Current phase: **Phase 0 — setup**.
+See [docs/PLAN.md](docs/PLAN.md) for the full plan. **Current scope: watch-only MVP.**
+
+### MVP scope (revised)
+
+The first deliverable is a **passive observer** that does not execute trades. It:
+
+1. Connects to MegaETH Realtime API (or polls if WS isn't ready) and watches the registered pool set.
+2. Detects when a cross-venue cycle becomes theoretically profitable (gross edge clears Σ pool fees + Aave 5 bps + estimated gas + safety).
+3. Logs each opportunity with: timestamp, cycle path, theoretical profit USD, loan size used in sim, gas estimate.
+4. Tracks **opportunity lifetime** — from "first profitable" to "no longer profitable" — and logs that duration on close.
+
+This isolates the *detection* problem (correctness of V3 math, latency of state ingestion, profitability gating) from the *execution* problem (atomic on-chain swaps + flash loan). Once the watcher reliably surfaces real opportunities and we understand their typical lifetime, we extend `ArbExecutor` with V3 swap support and start submitting.
+
+Watch-mode is also the empirical answer to "is this strategy worth shipping" — if the watcher logs zero clearings-the-bar opportunities for a week, fix the strategy before writing any execution code.
+
+### V3 swap math is the critical path
+
+Both DEXs (Kumbaya, Prismfi) are Uniswap V3 forks. The detector needs Rust V3 swap math byte-equivalent to `pool.swap()`. Single-tick approximation is acceptable for the MVP loan sizes ($100s-$1k); full tick-walking lands when loan sizes grow.

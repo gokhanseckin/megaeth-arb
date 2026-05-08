@@ -8,11 +8,12 @@ import {UniV2Math} from "../src/libs/UniV2Math.sol";
 /// cheatcode itself — library `internal pure` calls get inlined and share the
 /// test's frame. We wrap them in this external-call harness so revert assertions work.
 contract UniV2MathHarness {
-    function getAmountOut(uint256 amountIn, uint256 reserveIn, uint256 reserveOut, uint256 feeBps)
-        external
-        pure
-        returns (uint256)
-    {
+    function getAmountOut(
+        uint256 amountIn,
+        uint256 reserveIn,
+        uint256 reserveOut,
+        uint256 feeBps
+    ) external pure returns (uint256) {
         return UniV2Math.getAmountOut(amountIn, reserveIn, reserveOut, feeBps);
     }
 }
@@ -45,7 +46,7 @@ contract UniV2MathTest is Test {
         amountIn = uint112(bound(amountIn, 1, type(uint112).max));
         reserveIn = uint112(bound(reserveIn, 1, type(uint112).max));
         reserveOut = uint112(bound(reserveOut, 1, type(uint112).max));
-        feeBps = uint16(bound(feeBps, 0, 9_999));
+        feeBps = uint16(bound(feeBps, 0, 9999));
         uint256 out = UniV2Math.getAmountOut(amountIn, reserveIn, reserveOut, feeBps);
         assertLt(out, reserveOut);
     }

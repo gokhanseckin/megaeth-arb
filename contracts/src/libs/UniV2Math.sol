@@ -11,11 +11,12 @@ library UniV2Math {
     /// @param reserveIn reserve of input token, must be > 0
     /// @param reserveOut reserve of output token, must be > 0
     /// @param feeBps swap fee in bps (numerator over 10_000)
-    function getAmountOut(uint256 amountIn, uint256 reserveIn, uint256 reserveOut, uint256 feeBps)
-        internal
-        pure
-        returns (uint256 amountOut)
-    {
+    function getAmountOut(
+        uint256 amountIn,
+        uint256 reserveIn,
+        uint256 reserveOut,
+        uint256 feeBps
+    ) internal pure returns (uint256 amountOut) {
         require(amountIn > 0, "V2:AMOUNT_IN");
         require(reserveIn > 0 && reserveOut > 0, "V2:RESERVES");
         require(feeBps < 10_000, "V2:FEE");

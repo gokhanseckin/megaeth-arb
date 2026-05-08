@@ -35,7 +35,10 @@ pub struct RealtimeClient {
 
 impl RealtimeClient {
     pub fn new(url: impl Into<String>, watched: Vec<alloy_primitives::Address>) -> Self {
-        Self { url: url.into(), watched }
+        Self {
+            url: url.into(),
+            watched,
+        }
     }
 
     /// Begin streaming diffs into `tx`. Returns when the channel is closed

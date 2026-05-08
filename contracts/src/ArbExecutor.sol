@@ -28,10 +28,10 @@ contract ArbExecutor is IFlashLoanSimpleReceiver {
     /// @notice One swap leg in the arb cycle.
     /// @dev Packed off-chain into the `params` blob; decoded inside `executeOperation`.
     struct Leg {
-        address pair;       // V2 pair address
-        address tokenIn;    // input token for this leg
-        address tokenOut;   // output token for this leg
-        uint256 amountOut;  // off-chain-computed expected output (used as `amount{0,1}Out`)
+        address pair; // V2 pair address
+        address tokenIn; // input token for this leg
+        address tokenOut; // output token for this leg
+        uint256 amountOut; // off-chain-computed expected output (used as `amount{0,1}Out`)
     }
 
     error NotOwner();
@@ -57,7 +57,10 @@ contract ArbExecutor is IFlashLoanSimpleReceiver {
         _locked = 1;
     }
 
-    constructor(address pool, address owner_) {
+    constructor(
+        address pool,
+        address owner_
+    ) {
         POOL = pool;
         owner = owner_;
     }
@@ -114,29 +117,41 @@ contract ArbExecutor is IFlashLoanSimpleReceiver {
     }
 
     /// @dev Issue a V2-style swap. Caller must have already transferred `tokenIn` to `leg.pair`.
-    function _v2Swap(Leg memory leg, address to) internal {
+    function _v2Swap(
+        Leg memory leg,
+        address to
+    ) internal {
         IUniswapV2Pair pair = IUniswapV2Pair(leg.pair);
         // Determine output side via lexicographic ordering on the pair.
         bool zeroForOne = leg.tokenIn < leg.tokenOut;
-        (uint256 amount0Out, uint256 amount1Out) = zeroForOne
-            ? (uint256(0), leg.amountOut)
-            : (leg.amountOut, uint256(0));
+        (uint256 amount0Out, uint256 amount1Out) =
+            zeroForOne ? (uint256(0), leg.amountOut) : (leg.amountOut, uint256(0));
         pair.swap(amount0Out, amount1Out, to, "");
     }
 
     /// @notice Owner-only sweep for any token left behind (e.g. rounding dust).
-    function sweep(address token, address to, uint256 amount) external onlyOwner {
+    function sweep(
+        address token,
+        address to,
+        uint256 amount
+    ) external onlyOwner {
         _safeTransfer(IERC20(token), to, amount);
     }
 
     /// @dev USDT-style "non-conformant" tokens return nothing on success; treat empty
     /// returndata as success. Any explicit `false` is a failure.
-    function _safeTransfer(IERC20 token, address to, uint256 amount) internal {
+    function _safeTransfer(
+        IERC20 token,
+        address to,
+        uint256 amount
+    ) internal {
         (bool ok, bytes memory data) = address(token).call(abi.encodeCall(IERC20.transfer, (to, amount)));
         if (!ok || (data.length != 0 && !abi.decode(data, (bool)))) revert TransferFailed();
     }
 
-    function transferOwnership(address next) external onlyOwner {
+    function transferOwnership(
+        address next
+    ) external onlyOwner {
         emit OwnershipTransferred(owner, next);
         owner = next;
     }

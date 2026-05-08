@@ -3,8 +3,8 @@
 //! Phase 0 stub: types and a simple V2-only evaluator. Triangular and V3 support land
 //! in Phase 4.
 
-use alloy_primitives::{Address, U256};
 use crate::math::v2_amount_out;
+use alloy_primitives::{Address, U256};
 
 /// One leg of a cycle.
 #[derive(Debug, Clone)]
@@ -79,7 +79,9 @@ mod tests {
                 },
             ],
         };
-        let eval = cycle.evaluate(U256::from(1_000_000_000_000_000_000u128)).unwrap();
+        let eval = cycle
+            .evaluate(U256::from(1_000_000_000_000_000_000u128))
+            .unwrap();
         assert!(!eval.gross_profitable);
     }
 }

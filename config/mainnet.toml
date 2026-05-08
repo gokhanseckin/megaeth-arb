@@ -1,46 +1,456 @@
-# MegaETH mainnet config.
-# Addresses below are PLACEHOLDERS — verify each against authoritative sources
-# before deploying or running with real funds:
-#   * Aave V3 Pool — Aave governance proposal "Deploy Aave V3 to MegaETH" + the
-#     deployed UI on app.aave.com (network: MegaETH).
-#   * DEX factories — DefiLlama MegaETH chain page, sorted by 24h volume.
-#   * Token addresses — chain explorer (canonical bridged USDC, WETH, etc.).
+# MegaETH mainnet config — confirmed against on-chain reads and the
+# canonical Aave address book (bgd-labs/aave-address-book/src/AaveV3MegaEth.sol).
+#
+# Verification done:
+#   * Chain ID 4326    — chainlist.org
+#   * RPC + WS         — docs.megaeth.com
+#   * Aave V3 contracts — bgd-labs/aave-address-book @ commit on main
+#   * Token symbols/decimals — `cast call` against mainnet RPC
+#
+# DEX entries are still placeholders pending user confirmation of which
+# venues to target (top 2-3 by 24h volume).
 
 [network]
 name        = "megaeth-mainnet"
-chain_id    = 6342                    # TODO: confirm — MegaETH advertised chain id
+chain_id    = 4326
 rpc_urls    = [
-    "https://carrot.megaeth.com/rpc", # TODO: replace with sequencer endpoint(s) we have access to
+    "https://mainnet.megaeth.com/rpc",   # public — replace with managed endpoint for prod
 ]
-realtime_ws = "wss://carrot.megaeth.com/ws"   # TODO: confirm Realtime API endpoint
+realtime_ws = "wss://mainnet.megaeth.com/ws"   # TODO: confirm exact path from docs.megaeth.com/realtime-api
+explorer    = "https://mega.etherscan.io"
 
 [aave]
-pool = "0x0000000000000000000000000000000000000000"  # TODO: Aave V3 Pool on MegaETH
+# Aave V3 deployment — see github.com/bgd-labs/aave-address-book/blob/main/src/AaveV3MegaEth.sol
+pool                       = "0x7e324AbC5De01d112AfC03a584966ff199741C28"
+pool_addresses_provider    = "0x46Dcd5F4600319b02649Fd76B55aA6c1035CA478"
+oracle                     = "0x421117D7319E96d831972b3F7e970bbfe29C4F21"
+data_provider              = "0x9588b453A4EE24a420830CB3302195cA7aA3b403"
+
+# Borrowable via flashLoanSimple (user-confirmed via app.aave.com/proto_megaeth_v3).
+# Phase 1 strategy uses these as the loan-and-repay leg of every cycle.
+flashloan_assets = [
+    "0xFAfDdbb3FC7688494971a79cc65DCa3EF82079E7",  # USDm
+    "0x5d3a1Ff2b6BAb83b63cd9AD0787074081a52ef34",  # USDe
+    "0xB8CE59FC3717ada4C02eaDF9682A9e934F625ebb",  # USDT0
+]
+
+# DEX list. Each entry verified on-chain (factory bytecode present, fee
+# tiers configured, representative pools queried for liquidity).
 
 [[dexes]]
-name    = "GTE"
-kind    = "uniswap_v2"                # placeholder — confirm GTE pool model
-factory = "0x0000000000000000000000000000000000000000"
-
-[[dexes]]
-name    = "<dex2>"
+name    = "prismfi"
 kind    = "uniswap_v3"
-factory = "0x0000000000000000000000000000000000000000"
+factory = "0x1adb8f973373505bB206e0E5D87af8FB1f5514Ef"
+# Standard V3 fee tiers configured 100/500/3000/10000 → tickSpacing 1/10/60/200.
+# Owner: 0x68915D1eA12Eb987956e4e647289611e31a982F7.
+# Cross-venue match with Kumbaya on USDT0/USDm @ 1bps — primary arb pair.
 
+[[dexes]]
+name    = "kumbaya"
+kind    = "uniswap_v3"
+factory = "0x68b34591f662508076927803c567Cc8006988a09"
+# Standard V3 fee tiers, all configured: 100/500/3000/10000 → tickSpacing 1/10/60/200.
+# Owner: 0xC2F467A2d602172E1d4113bd2C4b77De5634Ae4a.
+# Notable live pools (raw `liquidity()` snapshot 2026-05-08):
+#   USDe/USDm   1bps  0xc9CA2086E008F13208193FB080BadD9738910829   L=3.0e27
+#   USDm/WETH   30bps 0x587F6eeAfc7Ad567e96eD1B62775fA6402164b22   L=5.1e23
+#   WETH/wstETH 1bps  0xAAe2E53d8068e84f5993096039BafCc07a7d9Ae4   L=8.0e22
+#   USDT0/USDm  1bps  0x6c8E5D463a2473b1A8bcd87e1cEA2724203A1D8f   L=3.0e21
+#   USDT0/WETH  30bps 0x2809696F2e42eB452C32C3d0A2Dc540858C14125   L=1.1e17
+
+# TODO: add a 2nd DEX so cross-venue arb is possible; intra-Kumbaya
+# (cross-fee-tier) arb has very thin edge.
+
+# Token allowlist — every reserve in Aave V3 MegaETH plus any extras worth swapping through.
+# Symbol, address, decimals confirmed via on-chain `symbol()/decimals()` calls.
 [[tokens]]
 symbol   = "WETH"
-address  = "0x0000000000000000000000000000000000000000"  # TODO
+address  = "0x4200000000000000000000000000000000000006"
 decimals = 18
 
 [[tokens]]
-symbol   = "USDC"
-address  = "0x0000000000000000000000000000000000000000"  # TODO
+symbol   = "BTCb"
+address  = "0xB0F70C0bD6FD87dbEb7C10dC692a2a6106817072"
+decimals = 8
+
+[[tokens]]
+symbol   = "USDT0"
+address  = "0xB8CE59FC3717ada4C02eaDF9682A9e934F625ebb"
 decimals = 6
 
 [[tokens]]
-symbol   = "USDe"
-address  = "0x0000000000000000000000000000000000000000"  # TODO
+symbol   = "USDm"
+address  = "0xFAfDdbb3FC7688494971a79cc65DCa3EF82079E7"
 decimals = 18
+
+[[tokens]]
+symbol   = "USDe"
+address  = "0x5d3a1Ff2b6BAb83b63cd9AD0787074081a52ef34"
+decimals = 18
+
+[[tokens]]
+symbol   = "wstETH"
+address  = "0x601aC63637933D88285A025C685AC4e9a92a98dA"
+decimals = 18
+
+[[tokens]]
+symbol   = "wrsETH"
+address  = "0x4Fc44BE15e9B6E30C1E774E2C87A21D3E8b5403F"
+decimals = 18
+
+[[tokens]]
+symbol   = "ezETH"
+address  = "0x09601A65e7de7BC8A19813D263dD9E98bFdC3c57"
+decimals = 18
+
+# Top 30 Kumbaya V3 pools by 24h volume (snapshot 2026-05-08, source: kumbaya.xyz UI).
+# `fee` is the V3-native value (hundredths of bps, e.g. 100 = 0.01%, 3000 = 0.30%).
+# Bps comment is for readability. `vol_24h_usd` is a screening metric, not an
+# input to profit math.
+#
+# Strategy: prefer low-fee tiers (1bps, 5bps). Sum of pool fees on a cycle +
+# Aave 5bps + gas + safety margin must clear gross edge. See CLAUDE.md.
+
+# === Low-fee stablecoin tiers (primary arb candidates) ===
+[[pools]]
+address = "0xc9CA2086E008F13208193FB080BadD9738910829"
+dex = "kumbaya"
+pair = "USDe/USDm"
+fee = 100                                 # 0.01% / 1bps
+vol_24h_usd = 4_720_000.0
+
+[[pools]]
+address = "0x6c8E5D463a2473b1A8bcd87e1cEA2724203A1D8f"
+dex = "kumbaya"
+pair = "USDT0/USDm"
+fee = 100                                 # 0.01% / 1bps
+vol_24h_usd = 2_830_000.0
+
+[[pools]]
+address = "0xAAe2E53d8068e84f5993096039BafCc07a7d9Ae4"
+dex = "kumbaya"
+pair = "WETH/wstETH"
+fee = 100                                 # 0.01% / 1bps
+vol_24h_usd = 5_900.0
+
+[[pools]]
+address = "0xEcdA361586B1Bb10208AFbfA22f345dFFa2Cdd06"
+dex = "kumbaya"
+pair = "cUSD/USDm"
+fee = 500                                 # 0.05% / 5bps
+vol_24h_usd = 4_600.0
+
+[[pools]]
+address = "0xc30Bfc38a4DE860994DACb04Bdc62Ad4E0131A58"
+dex = "kumbaya"
+pair = "USDT0/USDm"
+fee = 500                                 # 0.05% / 5bps
+vol_24h_usd = 916.0
+
+[[pools]]
+address = "0xea93F729Bafe59FBa2945fd35a6eBcb8C5D5ae5b"
+dex = "kumbaya"
+pair = "wstETH/USDm"
+fee = 500                                 # 0.05% / 5bps
+vol_24h_usd = 278.0
+
+# === Mid-fee tiers (30bps — usable on directional edge, not pure arb) ===
+[[pools]]
+address = "0x587F6eeAfc7Ad567e96eD1B62775fA6402164b22"
+dex = "kumbaya"
+pair = "WETH/USDm"
+fee = 3000                                # 0.30% / 30bps
+vol_24h_usd = 1_270_000.0
+
+[[pools]]
+address = "0xA8275D88521B346c42dB84D5B760ef4b9E527764"
+dex = "kumbaya"
+pair = "MEGA/USDm"
+fee = 3000                                # 0.30% / 30bps
+vol_24h_usd = 898_000.0
+
+[[pools]]
+address = "0x2809696F2e42eB452C32C3d0A2Dc540858C14125"
+dex = "kumbaya"
+pair = "WETH/USDT0"
+fee = 3000                                # 0.30% / 30bps
+vol_24h_usd = 224_000.0
+
+[[pools]]
+address = "0xc1838B7807e5bd4D56EA630BA35Ac964CF72c9db"
+dex = "kumbaya"
+pair = "BTC.b/USDm"
+fee = 3000                                # 0.30% / 30bps
+vol_24h_usd = 36_000.0
+
+[[pools]]
+address = "0x9F4cEAc49C5c1de4eF487ebE7c0A3889e95bb2cd"
+dex = "kumbaya"
+pair = "MEGA/USDT0"
+fee = 3000                                # 0.30% / 30bps
+vol_24h_usd = 1_200.0
+
+[[pools]]
+address = "0xf143D17218e9794A0563c63A5f76e73aEDB35a26"
+dex = "kumbaya"
+pair = "GNS/USDm"
+fee = 3000                                # 0.30% / 30bps
+vol_24h_usd = 436.0
+
+# === High-fee tiers (1% — generally avoid; logged for completeness) ===
+[[pools]]
+address = "0x5fB29184C49546c13A14A3958f21E5759f0821f2"
+dex = "kumbaya"
+pair = "MEGA/USDm"
+fee = 10000                               # 1.00% / 100bps
+vol_24h_usd = 306_000.0
+
+[[pools]]
+address = "0x6bD9eeF21c2419FeffafbF4850153A3b3A74A5E1"
+dex = "kumbaya"
+pair = "DIRTY/USDm"
+fee = 10000
+vol_24h_usd = 205_000.0
+
+[[pools]]
+address = "0x549257DEef96625B03d98c99331fb63D2F6800EB"
+dex = "kumbaya"
+pair = "MEGA/WETH"
+fee = 10000
+vol_24h_usd = 73_000.0
+
+[[pools]]
+address = "0x76eeA0B4E1812D466dC825a1e12cF4435a5A08f1"
+dex = "kumbaya"
+pair = "KPEG/WETH"
+fee = 10000
+vol_24h_usd = 38_000.0
+
+[[pools]]
+address = "0x1e580A7B28e9806D61FAddbCf98e123A0CDFf6E3"
+dex = "kumbaya"
+pair = "MEKA/WETH"
+fee = 10000
+vol_24h_usd = 21_000.0
+
+[[pools]]
+address = "0x1E0c6d4e8d602Cfe1FdaB9Fe15dfAaB8A2Ba3325"
+dex = "kumbaya"
+pair = "FLUFFEY/WETH"
+fee = 10000
+vol_24h_usd = 15_000.0
+
+[[pools]]
+address = "0x3fa634c81Ee8aa78C4f37364e6FECcB8a89c0032"
+dex = "kumbaya"
+pair = "RBT/USDm"
+fee = 10000
+vol_24h_usd = 6_900.0
+
+[[pools]]
+address = "0x93410c1276bF7cC91A074A316FB7DBA00b4B4feA"
+dex = "kumbaya"
+pair = "Σ:/WETH"
+fee = 10000
+vol_24h_usd = 6_200.0
+
+[[pools]]
+address = "0xcBd0042ccf3Daee086b8EA2F260C04624F5A7B65"
+dex = "kumbaya"
+pair = "MEGA/USDT0"
+fee = 10000
+vol_24h_usd = 4_700.0
+
+[[pools]]
+address = "0xEDB8a6ccD06e6fC0ec5d9E3206F6b7cF8F3599d3"
+dex = "kumbaya"
+pair = "cUSD/USDm"
+fee = 10000
+vol_24h_usd = 2_800.0
+
+[[pools]]
+address = "0x9CF064AfDF8b9644F51Cf0B6935757093c7933B5"
+dex = "kumbaya"
+pair = "WETH/CROWN"
+fee = 10000
+vol_24h_usd = 2_300.0
+
+[[pools]]
+address = "0x3D9C6B5EA389AD523949f9eAB5620E6AACE7639c"
+dex = "kumbaya"
+pair = "WETH/$MEGACORE"
+fee = 10000
+vol_24h_usd = 2_300.0
+
+[[pools]]
+address = "0x7a37e10A38EB4E8B21Fa91536E88eCb8c5403d8D"
+dex = "kumbaya"
+pair = "MEGA/WETH"
+fee = 10000
+vol_24h_usd = 2_000.0
+
+[[pools]]
+address = "0x1de9b5c701D245fa5E933D221656db5b634bd170"
+dex = "kumbaya"
+pair = "CUM/WETH"
+fee = 10000
+vol_24h_usd = 1_900.0
+
+[[pools]]
+address = "0x04f9F3335a2e953d024588d60E37fdfCcC462C9f"
+dex = "kumbaya"
+pair = "WHALE/WETH"
+fee = 10000
+vol_24h_usd = 854.0
+
+[[pools]]
+address = "0x919f2707182BDaBB04e6a470483fa0aF02F79165"
+dex = "kumbaya"
+pair = "OMEGA/WETH"
+fee = 10000
+vol_24h_usd = 784.0
+
+[[pools]]
+address = "0x11CDC252a834F6611496a1b4592bB443dC560260"
+dex = "kumbaya"
+pair = "FAFEL/WETH"
+fee = 10000
+vol_24h_usd = 570.0
+
+[[pools]]
+address = "0x2eF5ebEa17073422C317258C66f55a22De73b7FE"
+dex = "kumbaya"
+pair = "BUNNISH/WETH"
+fee = 10000
+vol_24h_usd = 486.0
+
+# === Prismfi V3 — top 17 by 24h volume (snapshot 2026-05-08, source: prismfi.cc) ===
+# token0/token1/fee verified on-chain via factory().getPool() reads.
+
+# --- Low-fee stablecoin tier (primary arb candidates; this is the killer pool) ---
+[[pools]]
+address = "0x41cb3dd6824bb9c4cfc0cc4e15675f7a2e6af869"
+dex = "prismfi"
+pair = "USDT0/USDm"
+fee = 100                                 # 0.01% / 1bps
+vol_24h_usd = 1_577_848.0
+# Cross-venue twin: Kumbaya 0x6c8E5D...1D8f same pair, same fee.
+# Both deep (Prismfi L≈4.3e21, Kumbaya L≈9.0e21). 2-leg cycle clearing
+# bar = 2bps pool fees + 5bps Aave + gas + safety.
+
+# --- Mid-fee tier (30bps) ---
+[[pools]]
+address = "0xc2fac0b5b6c075819e654bcfbbbcda2838609d32"
+dex = "prismfi"
+pair = "WETH/USDm"
+fee = 3000
+vol_24h_usd = 795_152.0
+
+[[pools]]
+address = "0x36c06217a9855a2ce68cf183a9a4f0186db5e9f6"
+dex = "prismfi"
+pair = "MEGA/USDm"
+fee = 3000
+vol_24h_usd = 299_285.0
+
+[[pools]]
+address = "0xd2c7d4b8083fdd91cf6a05c53139f34a187dc633"
+dex = "prismfi"
+pair = "WETH/BTC.b"
+fee = 3000
+vol_24h_usd = 33_157.0
+
+[[pools]]
+address = "0x8c2a652c4428d87480c0f18cc8fd1ce3574e04df"
+dex = "prismfi"
+pair = "MEGA/WETH"
+fee = 3000
+vol_24h_usd = 15_749.0
+
+[[pools]]
+address = "0x8d06f22e9104c7ff24d75b1a8290a69212e548eb"
+dex = "prismfi"
+pair = "USDT0/USDm"
+fee = 3000
+vol_24h_usd = 8_089.0
+
+[[pools]]
+address = "0xf80aa221d62b5756e89a043979d02f809a5e1f3f"
+dex = "prismfi"
+pair = "USDmY/USDm"
+fee = 3000
+vol_24h_usd = 6_792.0
+
+[[pools]]
+address = "0xad284761d8a7fab0feee790061314cfacc31bbb4"
+dex = "prismfi"
+pair = "BTC.b/USDT0"
+fee = 3000
+vol_24h_usd = 1_720.0
+
+[[pools]]
+address = "0x4d5c60b71f902f94885f1e5682fe3293f428bf43"
+dex = "prismfi"
+pair = "FLUFFEY/USDm"
+fee = 3000
+vol_24h_usd = 320.0
+
+[[pools]]
+address = "0x3a62f001540f995e0660f1aed56f7a5e09357c46"
+dex = "prismfi"
+pair = "MEGA/USDT0"
+fee = 3000
+vol_24h_usd = 260.0
+
+[[pools]]
+address = "0x2a69d05f3613b89e58d9cd2e0b35d14a67902aec"
+dex = "prismfi"
+pair = "BTC.b/USDm"
+fee = 3000
+vol_24h_usd = 216.0
+
+# --- High-fee tier (100bps; logged for completeness) ---
+[[pools]]
+address = "0xf428bec5f1971186f0921226cd57e6d81e4a28ef"
+dex = "prismfi"
+pair = "cUSD/USDm"
+fee = 10000
+vol_24h_usd = 29_018.0
+
+[[pools]]
+address = "0x9fe7a472d3cb0504a529e1b58fa357a8ac97f663"
+dex = "prismfi"
+pair = "MEGA/WETH"
+fee = 10000
+vol_24h_usd = 14_259.0
+
+[[pools]]
+address = "0xe4950e73aea41cc61682f7d32117c7353b42d472"
+dex = "prismfi"
+pair = "MEGA/FLUFFEY"
+fee = 10000
+vol_24h_usd = 6_516.0
+
+[[pools]]
+address = "0x05a4d3e8735d7691e74815947cc60f1203680a5d"
+dex = "prismfi"
+pair = "MEGA/USDm"
+fee = 10000
+vol_24h_usd = 6_340.0
+
+[[pools]]
+address = "0xcf816d3e3aec077f6cd161a0f416bd7cf3fcd703"
+dex = "prismfi"
+pair = "WETH/BOBO"
+fee = 10000
+vol_24h_usd = 1_787.0
+
+[[pools]]
+address = "0x1568cb4e5c594497e5c42adfe68ad5820f5eb4db"
+dex = "prismfi"
+pair = "wiTRY/USDm"
+fee = 10000
+vol_24h_usd = 296.0
 
 [risk]
 max_loan_usd       = 5_000.0
