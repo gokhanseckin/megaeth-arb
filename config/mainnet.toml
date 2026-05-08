@@ -38,6 +38,14 @@ flashloan_assets = [
 # tiers configured, representative pools queried for liquidity).
 
 [[dexes]]
+name    = "prismfi"
+kind    = "uniswap_v3"
+factory = "0x1adb8f973373505bB206e0E5D87af8FB1f5514Ef"
+# Standard V3 fee tiers configured 100/500/3000/10000 → tickSpacing 1/10/60/200.
+# Owner: 0x68915D1eA12Eb987956e4e647289611e31a982F7.
+# Cross-venue match with Kumbaya on USDT0/USDm @ 1bps — primary arb pair.
+
+[[dexes]]
 name    = "kumbaya"
 kind    = "uniswap_v3"
 factory = "0x68b34591f662508076927803c567Cc8006988a09"
@@ -315,6 +323,134 @@ dex = "kumbaya"
 pair = "BUNNISH/WETH"
 fee = 10000
 vol_24h_usd = 486.0
+
+# === Prismfi V3 — top 17 by 24h volume (snapshot 2026-05-08, source: prismfi.cc) ===
+# token0/token1/fee verified on-chain via factory().getPool() reads.
+
+# --- Low-fee stablecoin tier (primary arb candidates; this is the killer pool) ---
+[[pools]]
+address = "0x41cb3dd6824bb9c4cfc0cc4e15675f7a2e6af869"
+dex = "prismfi"
+pair = "USDT0/USDm"
+fee = 100                                 # 0.01% / 1bps
+vol_24h_usd = 1_577_848.0
+# Cross-venue twin: Kumbaya 0x6c8E5D...1D8f same pair, same fee.
+# Both deep (Prismfi L≈4.3e21, Kumbaya L≈9.0e21). 2-leg cycle clearing
+# bar = 2bps pool fees + 5bps Aave + gas + safety.
+
+# --- Mid-fee tier (30bps) ---
+[[pools]]
+address = "0xc2fac0b5b6c075819e654bcfbbbcda2838609d32"
+dex = "prismfi"
+pair = "WETH/USDm"
+fee = 3000
+vol_24h_usd = 795_152.0
+
+[[pools]]
+address = "0x36c06217a9855a2ce68cf183a9a4f0186db5e9f6"
+dex = "prismfi"
+pair = "MEGA/USDm"
+fee = 3000
+vol_24h_usd = 299_285.0
+
+[[pools]]
+address = "0xd2c7d4b8083fdd91cf6a05c53139f34a187dc633"
+dex = "prismfi"
+pair = "WETH/BTC.b"
+fee = 3000
+vol_24h_usd = 33_157.0
+
+[[pools]]
+address = "0x8c2a652c4428d87480c0f18cc8fd1ce3574e04df"
+dex = "prismfi"
+pair = "MEGA/WETH"
+fee = 3000
+vol_24h_usd = 15_749.0
+
+[[pools]]
+address = "0x8d06f22e9104c7ff24d75b1a8290a69212e548eb"
+dex = "prismfi"
+pair = "USDT0/USDm"
+fee = 3000
+vol_24h_usd = 8_089.0
+
+[[pools]]
+address = "0xf80aa221d62b5756e89a043979d02f809a5e1f3f"
+dex = "prismfi"
+pair = "USDmY/USDm"
+fee = 3000
+vol_24h_usd = 6_792.0
+
+[[pools]]
+address = "0xad284761d8a7fab0feee790061314cfacc31bbb4"
+dex = "prismfi"
+pair = "BTC.b/USDT0"
+fee = 3000
+vol_24h_usd = 1_720.0
+
+[[pools]]
+address = "0x4d5c60b71f902f94885f1e5682fe3293f428bf43"
+dex = "prismfi"
+pair = "FLUFFEY/USDm"
+fee = 3000
+vol_24h_usd = 320.0
+
+[[pools]]
+address = "0x3a62f001540f995e0660f1aed56f7a5e09357c46"
+dex = "prismfi"
+pair = "MEGA/USDT0"
+fee = 3000
+vol_24h_usd = 260.0
+
+[[pools]]
+address = "0x2a69d05f3613b89e58d9cd2e0b35d14a67902aec"
+dex = "prismfi"
+pair = "BTC.b/USDm"
+fee = 3000
+vol_24h_usd = 216.0
+
+# --- High-fee tier (100bps; logged for completeness) ---
+[[pools]]
+address = "0xf428bec5f1971186f0921226cd57e6d81e4a28ef"
+dex = "prismfi"
+pair = "cUSD/USDm"
+fee = 10000
+vol_24h_usd = 29_018.0
+
+[[pools]]
+address = "0x9fe7a472d3cb0504a529e1b58fa357a8ac97f663"
+dex = "prismfi"
+pair = "MEGA/WETH"
+fee = 10000
+vol_24h_usd = 14_259.0
+
+[[pools]]
+address = "0xe4950e73aea41cc61682f7d32117c7353b42d472"
+dex = "prismfi"
+pair = "MEGA/FLUFFEY"
+fee = 10000
+vol_24h_usd = 6_516.0
+
+[[pools]]
+address = "0x05a4d3e8735d7691e74815947cc60f1203680a5d"
+dex = "prismfi"
+pair = "MEGA/USDm"
+fee = 10000
+vol_24h_usd = 6_340.0
+
+[[pools]]
+address = "0xcf816d3e3aec077f6cd161a0f416bd7cf3fcd703"
+dex = "prismfi"
+pair = "WETH/BOBO"
+fee = 10000
+vol_24h_usd = 1_787.0
+
+[[pools]]
+address = "0x1568cb4e5c594497e5c42adfe68ad5820f5eb4db"
+dex = "prismfi"
+pair = "wiTRY/USDm"
+fee = 10000
+vol_24h_usd = 296.0
 
 [risk]
 max_loan_usd       = 5_000.0

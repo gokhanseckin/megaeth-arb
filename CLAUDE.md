@@ -32,6 +32,22 @@ Every leg's fee compounds. For a candidate cycle to fire, the **gross edge** mus
 
 The pool registry in [config/mainnet.toml](config/mainnet.toml) is sorted into low-fee, mid-fee, and high-fee buckets accordingly.
 
+### Cross-venue same-pair pools (2-leg arb candidates)
+
+These are the pairs where both DEXs have the same fee tier — pure 2-leg arb works without needing a third hop.
+
+| Pair | Fee | Kumbaya | Prismfi | Why this matters |
+|---|---|---|---|---|
+| **USDT0/USDm** | **1bps** | `0x6c8E5D…1D8f` | `0x41cb3dd…f869` | **Killer pair.** 2 + 5 (Aave) = 7 bps clearing bar. |
+| WETH/USDm | 30bps | `0x587F6e…4b22` | `0xc2fac0…9d32` | 60 + 5 = 65 bps. Only fires on directional dislocation. |
+| MEGA/USDm | 30bps | `0xA8275D…7764` | `0x36c062…e9f6` | Same 65 bps bar. |
+| MEGA/USDT0 | 30bps | `0x9F4cEa…b2cd` | `0x3a62f0…7c46` | Tiny pools both sides, mostly logged. |
+| BTC.b/USDm | 30bps | `0xc1838B…c9db` | `0x2a69d0…2aec` | Prismfi side is sub-$1k volume. |
+| MEGA/WETH | 30bps/100bps | `0x549257…00EB` (1%), `0x7a37e1…3d8D` (1%) | `0x8c2a65…04df` (30bps), `0x9fe7a4…f663` (1%) | Cross-fee mismatch — not a clean 2-leg cycle. |
+| cUSD/USDm | 100bps/100bps | `0xEDB8a6…99d3` | `0xf428be…28ef` | 2% pool fees; ignore. |
+
+**Phase 1 fork test should target `USDT0/USDm @ 1bps` cross-venue first** — the only cycle where the math is reliably above-water at typical gas prices.
+
 Authoritative addresses live in [config/mainnet.toml](config/mainnet.toml). Source: [bgd-labs/aave-address-book/src/AaveV3MegaEth.sol](https://github.com/bgd-labs/aave-address-book/blob/main/src/AaveV3MegaEth.sol).
 
 ## Architectural Conventions
