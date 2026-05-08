@@ -15,6 +15,7 @@ searcher-net = { workspace = true }
 searcher-pools = { workspace = true }
 searcher-exec = { workspace = true }
 
+alloy = { workspace = true }
 tokio = { workspace = true }
 clap = { workspace = true }
 serde = { workspace = true }

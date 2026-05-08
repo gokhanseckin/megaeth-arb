@@ -1,6 +1,9 @@
-//! Networking: MegaETH Realtime WS subscriptions and HTTP RPC submission.
-//!
-//! Phase 0 stub — interfaces are defined; bodies land in Phase 2.
+//! Networking: MegaETH Realtime WS subscriptions, HTTP RPC submission, and
+//! polling-based V3 pool state ingestion.
 
+pub mod abis;
+pub mod poller;
 pub mod realtime;
 pub mod rpc;
+
+pub use poller::{PoolPoller, TickStats};
