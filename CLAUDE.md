@@ -11,6 +11,14 @@ The repo is a polyglot monorepo:
 - **`searcher/`** — Cargo workspace (Rust). Off-chain bot that consumes the MegaETH Realtime WS, maintains a pool state cache, detects opportunities, simulates them in pure Rust math, and submits signed txs.
 - **`config/`** — Per-network TOML: chain RPC, Aave/DEX addresses, token allowlist, gas params, caps.
 
+## MegaETH Aave V3 — what's flash-loanable
+
+Aave V3 on MegaETH only allows flash-loan borrowing of **3 stablecoins**: `USDm`, `USDe`, `USDT0`. Other reserves (WETH, BTCb, wstETH, wrsETH, ezETH, plus the borrowable stables) can be supplied/borrowed normally but not flash-loaned.
+
+**Strategy implication.** Every arb cycle must start *and end* in one of the three borrowable stables. Intermediate hops can route through any token on any DEX. Triangular shapes look like `USDT0 → WETH → USDC → USDT0` or `USDe → BTCb → USDT0 → USDe`.
+
+Authoritative addresses live in [config/mainnet.toml](config/mainnet.toml). Source: [bgd-labs/aave-address-book/src/AaveV3MegaEth.sol](https://github.com/bgd-labs/aave-address-book/blob/main/src/AaveV3MegaEth.sol).
+
 ## Architectural Conventions
 
 - **Atomic-or-revert.** The Solidity executor enforces `minProfit` on-chain. Off-chain math is the *prediction*; the contract is the *backstop*. Never rely solely on off-chain checks for safety.

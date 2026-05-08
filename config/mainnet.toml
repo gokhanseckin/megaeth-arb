@@ -1,25 +1,43 @@
-# MegaETH mainnet config.
-# Addresses below are PLACEHOLDERS — verify each against authoritative sources
-# before deploying or running with real funds:
-#   * Aave V3 Pool — Aave governance proposal "Deploy Aave V3 to MegaETH" + the
-#     deployed UI on app.aave.com (network: MegaETH).
-#   * DEX factories — DefiLlama MegaETH chain page, sorted by 24h volume.
-#   * Token addresses — chain explorer (canonical bridged USDC, WETH, etc.).
+# MegaETH mainnet config — confirmed against on-chain reads and the
+# canonical Aave address book (bgd-labs/aave-address-book/src/AaveV3MegaEth.sol).
+#
+# Verification done:
+#   * Chain ID 4326    — chainlist.org
+#   * RPC + WS         — docs.megaeth.com
+#   * Aave V3 contracts — bgd-labs/aave-address-book @ commit on main
+#   * Token symbols/decimals — `cast call` against mainnet RPC
+#
+# DEX entries are still placeholders pending user confirmation of which
+# venues to target (top 2-3 by 24h volume).
 
 [network]
 name        = "megaeth-mainnet"
-chain_id    = 6342                    # TODO: confirm — MegaETH advertised chain id
+chain_id    = 4326
 rpc_urls    = [
-    "https://carrot.megaeth.com/rpc", # TODO: replace with sequencer endpoint(s) we have access to
+    "https://mainnet.megaeth.com/rpc",   # public — replace with managed endpoint for prod
 ]
-realtime_ws = "wss://carrot.megaeth.com/ws"   # TODO: confirm Realtime API endpoint
+realtime_ws = "wss://mainnet.megaeth.com/ws"   # TODO: confirm exact path from docs.megaeth.com/realtime-api
+explorer    = "https://mega.etherscan.io"
 
 [aave]
-pool = "0x0000000000000000000000000000000000000000"  # TODO: Aave V3 Pool on MegaETH
+# Aave V3 deployment — see github.com/bgd-labs/aave-address-book/blob/main/src/AaveV3MegaEth.sol
+pool                       = "0x7e324AbC5De01d112AfC03a584966ff199741C28"
+pool_addresses_provider    = "0x46Dcd5F4600319b02649Fd76B55aA6c1035CA478"
+oracle                     = "0x421117D7319E96d831972b3F7e970bbfe29C4F21"
+data_provider              = "0x9588b453A4EE24a420830CB3302195cA7aA3b403"
 
+# Borrowable via flashLoanSimple (user-confirmed via app.aave.com/proto_megaeth_v3).
+# Phase 1 strategy uses these as the loan-and-repay leg of every cycle.
+flashloan_assets = [
+    "0xFAfDdbb3FC7688494971a79cc65DCa3EF82079E7",  # USDm
+    "0x5d3a1Ff2b6BAb83b63cd9AD0787074081a52ef34",  # USDe
+    "0xB8CE59FC3717ada4C02eaDF9682A9e934F625ebb",  # USDT0
+]
+
+# DEX list — TODO: fill with top 2-3 by 24h volume on MegaETH.
 [[dexes]]
-name    = "GTE"
-kind    = "uniswap_v2"                # placeholder — confirm GTE pool model
+name    = "<dex1>"
+kind    = "uniswap_v2"
 factory = "0x0000000000000000000000000000000000000000"
 
 [[dexes]]
@@ -27,19 +45,46 @@ name    = "<dex2>"
 kind    = "uniswap_v3"
 factory = "0x0000000000000000000000000000000000000000"
 
+# Token allowlist — every reserve in Aave V3 MegaETH plus any extras worth swapping through.
+# Symbol, address, decimals confirmed via on-chain `symbol()/decimals()` calls.
 [[tokens]]
 symbol   = "WETH"
-address  = "0x0000000000000000000000000000000000000000"  # TODO
+address  = "0x4200000000000000000000000000000000000006"
 decimals = 18
 
 [[tokens]]
-symbol   = "USDC"
-address  = "0x0000000000000000000000000000000000000000"  # TODO
+symbol   = "BTCb"
+address  = "0xB0F70C0bD6FD87dbEb7C10dC692a2a6106817072"
+decimals = 8
+
+[[tokens]]
+symbol   = "USDT0"
+address  = "0xB8CE59FC3717ada4C02eaDF9682A9e934F625ebb"
 decimals = 6
 
 [[tokens]]
+symbol   = "USDm"
+address  = "0xFAfDdbb3FC7688494971a79cc65DCa3EF82079E7"
+decimals = 18
+
+[[tokens]]
 symbol   = "USDe"
-address  = "0x0000000000000000000000000000000000000000"  # TODO
+address  = "0x5d3a1Ff2b6BAb83b63cd9AD0787074081a52ef34"
+decimals = 18
+
+[[tokens]]
+symbol   = "wstETH"
+address  = "0x601aC63637933D88285A025C685AC4e9a92a98dA"
+decimals = 18
+
+[[tokens]]
+symbol   = "wrsETH"
+address  = "0x4Fc44BE15e9B6E30C1E774E2C87A21D3E8b5403F"
+decimals = 18
+
+[[tokens]]
+symbol   = "ezETH"
+address  = "0x09601A65e7de7BC8A19813D263dD9E98bFdC3c57"
 decimals = 18
 
 [risk]
