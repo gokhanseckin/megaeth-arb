@@ -30,6 +30,8 @@ struct Config {
     dexes: Vec<DexConfig>,
     #[serde(default)]
     tokens: Vec<TokenConfig>,
+    #[serde(default)]
+    pools: Vec<PoolConfig>,
     risk: RiskConfig,
     #[serde(default)]
     metrics: MetricsConfig,
@@ -66,6 +68,18 @@ struct TokenConfig {
     decimals: u8,
 }
 
+/// One pool entry. `fee` is the V3-native value (hundredths of bps; 100 = 0.01%, 3000 = 0.30%).
+/// For V2 pools we'll convert at registry-load time (3000 → 30 bps for the V2 math lib).
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+struct PoolConfig {
+    address: String,
+    dex: String,
+    pair: String,
+    fee: u32,
+    vol_24h_usd: f64,
+}
+
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
 struct RiskConfig {
@@ -99,11 +113,14 @@ async fn main() -> Result<()> {
     let cfg_text = std::fs::read_to_string(&cli.config)?;
     let cfg: Config = toml::from_str(&cfg_text)?;
 
+    let pools_low_fee = cfg.pools.iter().filter(|p| p.fee <= 500).count();
     info!(
         network = %cfg.network.name,
         chain_id = cfg.network.chain_id,
         dexes = cfg.dexes.len(),
         tokens = cfg.tokens.len(),
+        pools = cfg.pools.len(),
+        pools_low_fee = pools_low_fee,
         dry_run = cli.dry_run,
         "searcher booted"
     );

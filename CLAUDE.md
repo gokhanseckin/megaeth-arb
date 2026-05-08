@@ -17,6 +17,21 @@ Aave V3 on MegaETH only allows flash-loan borrowing of **3 stablecoins**: `USDm`
 
 **Strategy implication.** Every arb cycle must start *and end* in one of the three borrowable stables. Intermediate hops can route through any token on any DEX. Triangular shapes look like `USDT0 → WETH → USDC → USDT0` or `USDe → BTCb → USDT0 → USDe`.
 
+## Fee discipline (central constraint)
+
+Every leg's fee compounds. For a candidate cycle to fire, the **gross edge** must clear:
+
+```
+Σ(pool fees on path) + Aave premium (5 bps) + gas_cost + safety_margin
+```
+
+- **Prefer 1 bps and 5 bps pools.** These are the stablecoin tiers. A 2-leg cycle in 1bps pools needs only ~7-8 bps of edge to clear fees+premium (still need to add gas + margin).
+- **30 bps tolerable on a directional leg**, but not for both sides of a balanced arb — a 30/30/aave cycle needs ~65 bps of edge before it even looks at gas.
+- **1% pools generally infeasible.** Don't enumerate cycles that touch them unless investigating low-activity stale-price opportunities (low-prob, high-variance).
+- **Log fee total alongside expected output** when proposing cycles, so the user can sanity-check.
+
+The pool registry in [config/mainnet.toml](config/mainnet.toml) is sorted into low-fee, mid-fee, and high-fee buckets accordingly.
+
 Authoritative addresses live in [config/mainnet.toml](config/mainnet.toml). Source: [bgd-labs/aave-address-book/src/AaveV3MegaEth.sol](https://github.com/bgd-labs/aave-address-book/blob/main/src/AaveV3MegaEth.sol).
 
 ## Architectural Conventions
