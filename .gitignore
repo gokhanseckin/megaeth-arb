@@ -1,8 +1,8 @@
-# Foundry
+# Foundry — note: contracts/lib/ is a submodule directory, do NOT gitignore it.
+# .gitmodules + foundry.lock pin the dependency versions.
 contracts/cache/
 contracts/out/
 contracts/broadcast/
-contracts/lib/
 contracts/.gas-snapshot
 
 # Rust

@@ -40,6 +40,7 @@ contract ArbExecutor is IFlashLoanSimpleReceiver {
     error Reentrant();
     error InsufficientProfit(uint256 received, uint256 required);
     error EmptyRoute();
+    error TransferFailed();
 
     event ArbExecuted(address indexed asset, uint256 loan, uint256 profit);
     event OwnershipTransferred(address indexed from, address indexed to);
@@ -94,7 +95,7 @@ contract ArbExecutor is IFlashLoanSimpleReceiver {
         // Send the loan to the first pair, then walk the cycle.
         // Each leg sends the *next* leg's pair as `to`, so output lands where it's needed
         // for the next swap (saves a transfer per leg).
-        IERC20(legs[0].tokenIn).transfer(legs[0].pair, amount);
+        _safeTransfer(IERC20(legs[0].tokenIn), legs[0].pair, amount);
 
         for (uint256 i = 0; i < legs.length; i++) {
             address recipient = (i + 1 < legs.length) ? legs[i + 1].pair : address(this);
@@ -125,7 +126,14 @@ contract ArbExecutor is IFlashLoanSimpleReceiver {
 
     /// @notice Owner-only sweep for any token left behind (e.g. rounding dust).
     function sweep(address token, address to, uint256 amount) external onlyOwner {
-        IERC20(token).transfer(to, amount);
+        _safeTransfer(IERC20(token), to, amount);
+    }
+
+    /// @dev USDT-style "non-conformant" tokens return nothing on success; treat empty
+    /// returndata as success. Any explicit `false` is a failure.
+    function _safeTransfer(IERC20 token, address to, uint256 amount) internal {
+        (bool ok, bytes memory data) = address(token).call(abi.encodeCall(IERC20.transfer, (to, amount)));
+        if (!ok || (data.length != 0 && !abi.decode(data, (bool)))) revert TransferFailed();
     }
 
     function transferOwnership(address next) external onlyOwner {
