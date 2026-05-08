@@ -3343,11 +3343,15 @@ dependencies = [
 name = "searcher-core"
 version = "0.1.0"
 dependencies = [
+ "alloy",
  "alloy-primitives",
+ "anyhow",
  "proptest",
  "ruint",
  "serde",
+ "serde_json",
  "thiserror 2.0.18",
+ "tokio",
  "tracing",
 ]
 

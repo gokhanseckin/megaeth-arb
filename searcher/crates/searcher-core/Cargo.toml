@@ -14,3 +14,9 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 proptest = { workspace = true }
+# Online V3 parity test only — keeps the library proper I/O-free and dep-light.
+alloy = { workspace = true }
+anyhow = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }

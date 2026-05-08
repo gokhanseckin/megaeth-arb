@@ -6,6 +6,8 @@
 
 pub mod cycle;
 pub mod math;
+pub mod v3;
 
 pub use cycle::{Cycle, CycleEval, Leg};
 pub use math::{v2_amount_out, MathError};
+pub use v3::{v3_amount_out_single_tick, V3Error, V3Quote, MAX_SQRT_RATIO, MIN_SQRT_RATIO};
