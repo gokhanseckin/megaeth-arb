@@ -148,10 +148,16 @@ struct MetricsConfig {
 }
 
 fn init_tracing() {
+    // The custom `target=spread` and `target=opportunity` records must be
+    // explicitly allowed; an `EnvFilter` that only lists crate-name targets
+    // would silently drop them. Keep this list in sync with any new custom
+    // targets added to the binary.
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "searcher=info,searcher_core=info,searcher_net=info".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                "searcher=info,searcher_core=info,searcher_net=info,spread=info,opportunity=info"
+                    .into()
+            }),
         )
         .with_target(true)
         .json()
