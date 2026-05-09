@@ -43,8 +43,7 @@ pub fn decode_slot0(value: &B256) -> (U256, i32) {
     let sqrt_price = U256::from_be_bytes(sqrt_buf);
 
     // Sign-extend a 24-bit two's-complement value into i32.
-    let raw =
-        (u32::from(bytes[9]) << 16) | (u32::from(bytes[10]) << 8) | u32::from(bytes[11]);
+    let raw = (u32::from(bytes[9]) << 16) | (u32::from(bytes[10]) << 8) | u32::from(bytes[11]);
     let tick = if raw & 0x80_0000 != 0 {
         (raw | 0xff00_0000) as i32
     } else {
@@ -109,9 +108,8 @@ where
         .call(&tx)
         .await
         .with_context(|| format!("eth_call liquidity() on {pool}"))?;
-    let decoded =
-        IUniswapV3Pool::liquidityCall::abi_decode_returns(raw_call.as_ref(), false)
-            .with_context(|| format!("decode liquidity() on {pool}"))?;
+    let decoded = IUniswapV3Pool::liquidityCall::abi_decode_returns(raw_call.as_ref(), false)
+        .with_context(|| format!("decode liquidity() on {pool}"))?;
     let from_call = decoded._0;
 
     if from_slot != from_call {
