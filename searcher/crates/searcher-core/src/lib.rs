@@ -11,7 +11,7 @@ pub mod v3;
 
 pub use cycle::{Cycle, CycleEval, Leg};
 pub use detector::{
-    evaluate_candidate, Candidate, DetectorConfig, OpportunityEvent, OpportunityQuote,
+    evaluate_candidate, Candidate, DetectorConfig, EvalResult, OpportunityEvent, OpportunityQuote,
     OpportunityTracker, PoolStateView, V3Leg,
 };
 pub use math::{v2_amount_out, MathError};
