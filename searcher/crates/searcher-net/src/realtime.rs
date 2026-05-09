@@ -128,8 +128,9 @@ impl RealtimeClient {
             let frame = frame.context("ws stream")?;
             match frame {
                 Message::Text(text) => {
+                    debug!(bytes = text.len(), preview = %&text.chars().take(160).collect::<String>(), "realtime frame rx");
                     if let Err(e) = self.handle_text(&text).await {
-                        warn!(error = %format!("{e:#}"), "realtime frame decode failed");
+                        warn!(error = %format!("{e:#}"), preview = %&text.chars().take(200).collect::<String>(), "realtime frame decode failed");
                         metrics::counter!("realtime_decode_errors_total").increment(1);
                     }
                 }
@@ -183,15 +184,18 @@ impl RealtimeClient {
             block_number,
         } = payload;
 
+        debug!(pool = %address, slots = storage.len(), block = ?block_number, "apply_change entry");
+
         // We only care about pools we're watching; the API should already
         // filter, but defensive in case of a sequencer-side broadcast.
         if !self.registry.meta().contains_key(&address) {
+            debug!(pool = %address, "apply_change: pool not in meta (early return)");
             return Ok(());
         }
 
         let Some(prev) = self.registry.get(&address) else {
             // No baseline yet — wait for hydration to land.
-            debug!(pool = %address, "ws update before hydration; ignoring");
+            debug!(pool = %address, "apply_change: no baseline (un-hydrated) — skipping");
             return Ok(());
         };
 
@@ -199,7 +203,26 @@ impl RealtimeClient {
         // watermark if the wire format doesn't include it.
         let block = block_number.unwrap_or_else(|| self.registry.last_block());
 
-        let diffs: Vec<(B256, B256)> = storage.into_iter().collect();
+        // Storage values arrive as variable-length hex (e.g. "0x10" not the
+        // zero-padded 64-char form). Parse with left-padding to 32 bytes.
+        let mut diffs: Vec<(B256, B256)> = Vec::with_capacity(storage.len());
+        for (slot_str, val_str) in storage {
+            let slot = match parse_hex_b256(&slot_str) {
+                Ok(s) => s,
+                Err(e) => {
+                    warn!(slot = %slot_str, error = %e, "ws: bad slot hex; skipping");
+                    continue;
+                }
+            };
+            let value = match parse_hex_b256(&val_str) {
+                Ok(v) => v,
+                Err(e) => {
+                    warn!(value = %val_str, error = %e, "ws: bad value hex; skipping");
+                    continue;
+                }
+            };
+            diffs.push((slot, value));
+        }
         let new_state = apply_storage_diff(prev, &diffs, block);
         self.registry.set(address, new_state);
 
@@ -210,6 +233,7 @@ impl RealtimeClient {
             self.registry.set_last_block(block);
         }
 
+        debug!(pool = %address, block, applied_diffs = diffs.len(), "apply_change: applied");
         metrics::counter!("realtime_state_changes_total", "pool" => address.to_string())
             .increment(1);
         Ok(())
@@ -224,11 +248,31 @@ impl RealtimeClient {
 #[derive(Debug, Deserialize)]
 struct StateChangePayload {
     address: Address,
+    /// Stored as raw hex strings — values are variable-length (e.g. `"0x10"`)
+    /// and the strict B256 deserializer rejects them. Padded to 32 bytes in
+    /// [`RealtimeClient::apply_change`] via [`parse_hex_b256`].
     #[serde(default)]
-    storage: HashMap<B256, B256>,
+    storage: HashMap<String, String>,
     #[serde(default, deserialize_with = "deserialize_hex_u64_opt", alias = "block")]
     #[serde(rename = "blockNumber")]
     block_number: Option<u64>,
+}
+
+/// Parse a `0x`-prefixed hex string of any length (≤ 64 hex chars) into a
+/// 32-byte `B256`, left-padding with zeros. Tolerates odd-digit values like
+/// `"0x10"` that the strict B256 deserializer rejects.
+fn parse_hex_b256(s: &str) -> std::result::Result<B256, String> {
+    let trimmed = s.trim_start_matches("0x").trim_start_matches("0X");
+    if trimmed.len() > 64 {
+        return Err(format!("hex too long: {} chars (max 64)", trimmed.len()));
+    }
+    let padded = format!("{:0>64}", trimmed);
+    let mut buf = [0u8; 32];
+    for i in 0..32 {
+        buf[i] = u8::from_str_radix(&padded[i * 2..i * 2 + 2], 16)
+            .map_err(|e| format!("bad hex at byte {i}: {e}"))?;
+    }
+    Ok(B256::new(buf))
 }
 
 fn deserialize_hex_u64_opt<'de, D>(de: D) -> std::result::Result<Option<u64>, D::Error>
@@ -266,6 +310,41 @@ mod tests {
             },
         );
         Arc::new(PoolRegistry::new(metas))
+    }
+
+    #[test]
+    fn parse_hex_b256_full_padded() {
+        let s = "0x0000000000000000000000000000000000000000000000000000000000000004";
+        assert_eq!(parse_hex_b256(s).unwrap(), B256::with_last_byte(4));
+    }
+
+    #[test]
+    fn parse_hex_b256_short_even() {
+        // Wire format often abbreviates: "0x04" instead of 64 chars.
+        assert_eq!(parse_hex_b256("0x04").unwrap(), B256::with_last_byte(4));
+    }
+
+    #[test]
+    fn parse_hex_b256_odd_digits() {
+        // The bug from the live smoke test: "0x4" is 1 digit, odd.
+        assert_eq!(parse_hex_b256("0x4").unwrap(), B256::with_last_byte(4));
+        assert_eq!(parse_hex_b256("0x10").unwrap(), B256::with_last_byte(16));
+        // Also handle a longer odd-length value like "0x100".
+        let mut want = [0u8; 32];
+        want[30] = 0x01;
+        want[31] = 0x00;
+        assert_eq!(parse_hex_b256("0x100").unwrap(), B256::new(want));
+    }
+
+    #[test]
+    fn parse_hex_b256_too_long_rejected() {
+        let s = format!("0x{}", "f".repeat(65));
+        assert!(parse_hex_b256(&s).is_err());
+    }
+
+    #[test]
+    fn parse_hex_b256_no_prefix() {
+        assert_eq!(parse_hex_b256("4").unwrap(), B256::with_last_byte(4));
     }
 
     #[test]
@@ -320,10 +399,10 @@ mod tests {
         );
 
         // Construct a payload that updates only liquidity at slot 0x04.
+        // Use the wire-format string shape (variable-length hex) — apply_change
+        // pads via parse_hex_b256.
         let mut storage = HashMap::new();
-        let mut liq_word = [0u8; 32];
-        liq_word[16..32].copy_from_slice(&999u128.to_be_bytes());
-        storage.insert(B256::with_last_byte(4), B256::new(liq_word));
+        storage.insert("0x4".to_string(), format!("0x{:x}", 999u128));
         let payload = StateChangePayload {
             address: pool,
             storage,
