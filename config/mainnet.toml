@@ -13,10 +13,17 @@
 [network]
 name        = "megaeth-mainnet"
 chain_id    = 4326
+# Primary: managed Alchemy endpoint (key from $MEGAETH_RPC_KEY, expanded at config-load time).
+# MegaETH's own docs name Alchemy as the provider for managed-only trace methods.
+# Fallback: public sequencer endpoint — rate-limited, ok for cold reads, not the hot path.
 rpc_urls    = [
-    "https://mainnet.megaeth.com/rpc",   # public — replace with managed endpoint for prod
+    "https://megaeth-mainnet.g.alchemy.com/v2/${MEGAETH_RPC_KEY}",
+    "https://mainnet.megaeth.com/rpc",
 ]
-realtime_ws = "wss://mainnet.megaeth.com/ws"   # TODO: confirm exact path from docs.megaeth.com/realtime-api
+# Realtime API is sequencer-first-party. No managed provider currently proxies the
+# `stateChanges`/`miniBlocks` subscriptions, so the public WS is the only path.
+# `/ws` confirmed against docs.megaeth.com/developer-docs/tooling.
+realtime_ws = "wss://mainnet.megaeth.com/ws"
 explorer    = "https://mega.etherscan.io"
 
 [aave]
@@ -86,6 +93,11 @@ decimals = 18
 [[tokens]]
 symbol   = "USDe"
 address  = "0x5d3a1Ff2b6BAb83b63cd9AD0787074081a52ef34"
+decimals = 18
+
+[[tokens]]
+symbol   = "MEGA"
+address  = "0x28B7E77f82B25B95953825F1E3eA0E36c1c29861"
 decimals = 18
 
 [[tokens]]

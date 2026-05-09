@@ -236,7 +236,23 @@ async fn main() -> Result<()> {
 
     let cli = Cli::parse();
     let cfg_text = std::fs::read_to_string(&cli.config)?;
-    let cfg: Config = toml::from_str(&cfg_text)?;
+    let mut cfg: Config = toml::from_str(&cfg_text)?;
+
+    // Expand ${VAR} placeholders (e.g. ${MEGAETH_RPC_KEY}) so secrets stay out of the repo.
+    // Fail fast at startup rather than 4xx-ing once the bot is live.
+    cfg.network.rpc_urls = cfg
+        .network
+        .rpc_urls
+        .iter()
+        .map(|u| {
+            shellexpand::env(u)
+                .map(|s| s.into_owned())
+                .map_err(|e| anyhow!("env expansion failed for rpc_url {u:?}: {e}"))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    cfg.network.realtime_ws = shellexpand::env(&cfg.network.realtime_ws)
+        .map(|s| s.into_owned())
+        .map_err(|e| anyhow!("env expansion failed for realtime_ws: {e}"))?;
 
     let pools_low_fee = cfg.pools.iter().filter(|p| p.fee <= 500).count();
     info!(

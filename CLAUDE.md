@@ -87,6 +87,7 @@ cargo fmt --check
 The bot needs:
 - `MEGAETH_RPC` — sequencer HTTP RPC URL
 - `MEGAETH_WS` — Realtime WS URL
+- `MEGAETH_RPC_KEY` — Alchemy API key. Interpolated into `rpc_urls` in `config/mainnet.toml` via `${MEGAETH_RPC_KEY}` at config-load time; the loader fails fast if unset.
 - `MEGAETH_PK` — hot wallet private key (test funds only outside production)
 
 Production hot wallets must be a dedicated key with **no upgrade or sweep authority** — those live on a multisig owner of `ArbExecutor`.
