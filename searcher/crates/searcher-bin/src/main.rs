@@ -20,6 +20,18 @@ use searcher_core::{
     evaluate_candidate, Candidate, DetectorConfig, OpportunityEvent, OpportunityTracker,
     PoolStateView, V3Leg,
 };
+
+/// Per-block per-candidate `gross_edge_bps` is logged as a structured
+/// `target=spread event=event` record when it crosses this threshold.
+/// Below the threshold, only the periodic heartbeat carries the signal.
+const SPREAD_LOG_BPS: u32 = 5;
+
+/// Cadence for `target=spread event=heartbeat` rows. Each heartbeat
+/// summarizes how many candidate evaluations happened in the window and
+/// the largest `gross_edge_bps` observed across them. Empty heartbeats
+/// (max_bps=0) are still emitted so a silent log file is unambiguously a
+/// pipeline failure rather than a calm market.
+const HEARTBEAT_INTERVAL_MS: u64 = 5 * 60 * 1000;
 use searcher_net::abis::IUniswapV3Pool;
 use searcher_net::realtime::{HydrateFn, RealtimeClient};
 use searcher_net::PoolPoller;
@@ -136,10 +148,16 @@ struct MetricsConfig {
 }
 
 fn init_tracing() {
+    // The custom `target=spread` and `target=opportunity` records must be
+    // explicitly allowed; an `EnvFilter` that only lists crate-name targets
+    // would silently drop them. Keep this list in sync with any new custom
+    // targets added to the binary.
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "searcher=info,searcher_core=info,searcher_net=info".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                "searcher=info,searcher_core=info,searcher_net=info,spread=info,opportunity=info"
+                    .into()
+            }),
         )
         .with_target(true)
         .json()
@@ -578,6 +596,15 @@ async fn main() -> Result<()> {
     let mut results: Vec<(String, Option<searcher_core::OpportunityQuote>)> =
         Vec::with_capacity(candidates.len());
 
+    // Spread observability accumulators. Reset every HEARTBEAT_INTERVAL_MS.
+    let mut hb_window_started_ms: u64 = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    let mut hb_samples: u64 = 0;
+    let mut hb_max_bps: u32 = 0;
+    let mut hb_max_id: String = String::new();
+
     loop {
         if block_rx.changed().await.is_err() {
             warn!("block_rx closed — both poller and ws subscriber exited");
@@ -613,7 +640,29 @@ async fn main() -> Result<()> {
                 liquidity: s_b.liquidity,
             };
             match evaluate_candidate(cand, &view_a, &view_b, &det_cfg, block) {
-                Ok(quote) => results.push((cand.id.clone(), quote)),
+                Ok(res) => {
+                    // Spread observability: feed the heartbeat aggregator and
+                    // emit a per-event record when the imbalance crosses the
+                    // configured logging threshold. Cheap — `res` already
+                    // carries `max_gross_edge_bps`, no extra V3 math.
+                    hb_samples += 1;
+                    if res.max_gross_edge_bps > hb_max_bps {
+                        hb_max_bps = res.max_gross_edge_bps;
+                        hb_max_id.clear();
+                        hb_max_id.push_str(&cand.id);
+                    }
+                    if res.max_gross_edge_bps >= SPREAD_LOG_BPS {
+                        tracing::info!(
+                            target: "spread",
+                            event = "event",
+                            id = %cand.id,
+                            block = block,
+                            gross_edge_bps = res.max_gross_edge_bps,
+                            "spread event"
+                        );
+                    }
+                    results.push((cand.id.clone(), res.quote));
+                }
                 Err(e) => {
                     debug!(id = %cand.id, error = %e, "evaluate_candidate failed");
                     metrics::counter!("detector_eval_errors_total").increment(1);
@@ -629,6 +678,23 @@ async fn main() -> Result<()> {
         let events = tracker.record(std::mem::take(&mut results), now_ms);
         for ev in events {
             emit_event(ev);
+        }
+
+        if now_ms.saturating_sub(hb_window_started_ms) >= HEARTBEAT_INTERVAL_MS {
+            let window_s = now_ms.saturating_sub(hb_window_started_ms) / 1000;
+            tracing::info!(
+                target: "spread",
+                event = "heartbeat",
+                window_s = window_s,
+                samples = hb_samples,
+                max_bps = hb_max_bps,
+                max_id = %hb_max_id,
+                "spread heartbeat"
+            );
+            hb_window_started_ms = now_ms;
+            hb_samples = 0;
+            hb_max_bps = 0;
+            hb_max_id.clear();
         }
     }
 

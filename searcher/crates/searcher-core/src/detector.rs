@@ -86,6 +86,16 @@ pub struct OpportunityQuote {
     pub block_number: u64,
 }
 
+/// Output of `evaluate_candidate`. Always carries the largest `gross_edge_bps`
+/// observed across the loan-size sweep — even when no size cleared the profit
+/// bar — so callers can report sub-threshold spread without re-running the
+/// V3 math. `quote` is `Some` only when the cycle actually clears the bar.
+#[derive(Debug, Clone)]
+pub struct EvalResult {
+    pub max_gross_edge_bps: u32,
+    pub quote: Option<OpportunityQuote>,
+}
+
 #[derive(Debug, Clone)]
 pub enum OpportunityEvent {
     Opened {
@@ -107,9 +117,14 @@ pub enum OpportunityEvent {
 
 /// Evaluate one candidate against a snapshot of its two pools' state.
 ///
-/// Returns `Ok(Some(q))` with the best loan-size sweep result if any size
-/// clears the bar (`net_profit_wei > 0`); `Ok(None)` if none clears.
-/// Errors propagate from the V3 math.
+/// Returns `Ok(EvalResult { max_gross_edge_bps, quote })`:
+/// - `quote = Some(q)` when at least one loan size clears the profit bar
+///   (`gross > Aave premium + gas + safety margin`), with the most-profitable
+///   sweep result.
+/// - `quote = None` when nothing cleared the bar.
+/// - `max_gross_edge_bps` is the largest `(gross_out - loan) / loan` (in bps)
+///   observed across the sweep, regardless of clearing — surfaces sub-threshold
+///   imbalance for spread observability.
 ///
 /// `block_number` is stamped onto the returned quote for log correlation.
 pub fn evaluate_candidate(
@@ -118,8 +133,9 @@ pub fn evaluate_candidate(
     state_b: &PoolStateView,
     cfg: &DetectorConfig,
     block_number: u64,
-) -> Result<Option<OpportunityQuote>, V3Error> {
+) -> Result<EvalResult, V3Error> {
     let mut best: Option<OpportunityQuote> = None;
+    let mut max_gross_edge_bps: u32 = 0;
 
     for loan_usd in &cfg.loan_sizes_usd {
         let loan_wei = usd_whole_to_wei(*loan_usd, cand.borrow_decimals);
@@ -154,6 +170,10 @@ pub fn evaluate_candidate(
             continue;
         }
         let gross_profit = q_b.amount_out - loan_wei;
+        let gross_edge_bps = bps_floor(gross_profit, loan_wei);
+        if gross_edge_bps > max_gross_edge_bps {
+            max_gross_edge_bps = gross_edge_bps;
+        }
 
         // costs = aave premium + gas + safety margin.
         let aave_premium = mul_div_floor(
@@ -180,7 +200,6 @@ pub fn evaluate_candidate(
         }
         let net_profit_wei = gross_profit - total_costs;
 
-        let gross_edge_bps = bps_floor(gross_profit, loan_wei);
         let net_profit_usd_micros = wei_to_usd_micros(net_profit_wei, cand.borrow_decimals);
 
         let cand_q = OpportunityQuote {
@@ -202,7 +221,10 @@ pub fn evaluate_candidate(
         }
     }
 
-    Ok(best)
+    Ok(EvalResult {
+        max_gross_edge_bps,
+        quote: best,
+    })
 }
 
 // ---- lifetime tracker --------------------------------------------------
@@ -410,8 +432,15 @@ mod tests {
             sqrt_price_x96: unit_price(),
             liquidity: 9_000_000_000_000_000_000_000u128, // 9e21 — Kumbaya-class deep
         };
-        let q = evaluate_candidate(&cand, &state, &state, &cfg, 100).unwrap();
-        assert!(q.is_none(), "balanced pools must never produce a profit");
+        let r = evaluate_candidate(&cand, &state, &state, &cfg, 100).unwrap();
+        assert!(
+            r.quote.is_none(),
+            "balanced pools must never produce a profit"
+        );
+        assert_eq!(
+            r.max_gross_edge_bps, 0,
+            "no positive gross profit on balanced pools"
+        );
     }
 
     /// Engineer a price dislocation. Candidate borrows token0 (USDT0):
@@ -436,9 +465,8 @@ mod tests {
             liquidity: 4_300_000_000_000_000_000_000u128,
         };
 
-        let q = evaluate_candidate(&cand, &state_a, &state_b, &cfg, 555)
-            .expect("v3 math ok")
-            .expect("dislocation should clear");
+        let r = evaluate_candidate(&cand, &state_a, &state_b, &cfg, 555).expect("v3 math ok");
+        let q = r.quote.expect("dislocation should clear");
 
         assert!(
             q.gross_edge_bps > 100,
@@ -447,6 +475,10 @@ mod tests {
         );
         assert_eq!(q.block_number, 555);
         assert!(q.net_profit_wei > U256::ZERO);
+        assert!(
+            r.max_gross_edge_bps >= q.gross_edge_bps,
+            "max_gross_edge_bps must dominate the chosen quote's edge"
+        );
     }
 
     #[test]
@@ -467,8 +499,46 @@ mod tests {
 
         let q = evaluate_candidate(&cand, &state_a, &state_b, &cfg, 1)
             .unwrap()
+            .quote
             .unwrap();
         assert_eq!(q.loan_wei, U256::from(1_000_000_000u64)); // 1000 * 1e6 (USDT0 6 dp)
+    }
+
+    /// Sub-threshold dislocation: imbalance exists but is too small to clear
+    /// the bar. `quote` is None, but `max_gross_edge_bps` is still > 0.
+    /// The bump must produce gross profit *after* the 2 × 1 bps pool fees
+    /// (otherwise gross is zero and the assertion regresses to the no-imbalance
+    /// case). With unit-price pools and a sqrt bump of 1/1000, the round-trip
+    /// gross sits in the ~10-20 bps range — clearly above pool fees, well below
+    /// the ~55 bps clearing bar (5 bps Aave + 50 bps default margin).
+    #[test]
+    fn sub_threshold_dislocation_reports_max_gross_edge_bps() {
+        let cand = balanced_candidate();
+        let cfg = DetectorConfig::default();
+        let bump = unit_price() / U256::from(1_000u32);
+        let state_a = PoolStateView {
+            sqrt_price_x96: unit_price() + bump,
+            liquidity: 9_000_000_000_000_000_000_000u128,
+        };
+        let state_b = PoolStateView {
+            sqrt_price_x96: unit_price(),
+            liquidity: 4_300_000_000_000_000_000_000u128,
+        };
+
+        let r = evaluate_candidate(&cand, &state_a, &state_b, &cfg, 7).expect("v3 math ok");
+        assert!(
+            r.quote.is_none(),
+            "this dislocation must stay below the clearing bar"
+        );
+        assert!(
+            r.max_gross_edge_bps > 0,
+            "max_gross_edge_bps should reflect the sub-threshold imbalance"
+        );
+        assert!(
+            r.max_gross_edge_bps < 55,
+            "test setup: gross edge {} bps should be below the ~55 bps bar",
+            r.max_gross_edge_bps
+        );
     }
 
     fn quote_with_profit(micros: u64) -> OpportunityQuote {
