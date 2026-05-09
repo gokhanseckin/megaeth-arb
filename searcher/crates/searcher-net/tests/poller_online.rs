@@ -59,7 +59,7 @@ async fn poller_smoke_kumbaya_prismfi_usdt0_usdm() -> Result<()> {
         provider.clone(),
         registry.clone(),
         Duration::from_millis(150),
-        block_tx,
+        Arc::new(block_tx),
     );
 
     // Drive 3 ticks manually so we don't depend on the run loop's sleep.
