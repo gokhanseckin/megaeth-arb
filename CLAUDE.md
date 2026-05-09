@@ -99,8 +99,8 @@ If any fails, fix the cause; don't bypass. Report the green checklist in the PR 
 - After merge: `git worktree remove <path>` + `git branch -d claude/<slug>`. Don't reuse a merged worktree.
 
 **Handoff between sessions**
-- Mid-feature stop → push branch, open draft PR. That's the handoff.
-- Durable context goes in PR body or claude-mem, never in WIP commits or untracked scratch files.
+- Mid-feature stop → push branch, open draft PR. The PR body is the git-side handoff (what's done, what's left). Cross-session memory of decisions and exploration is captured automatically by claude-mem; don't duplicate it in PR text or scratch files.
+- Never leave uncommitted work in a worktree another session might inherit.
 
 ## Common Commands
 
