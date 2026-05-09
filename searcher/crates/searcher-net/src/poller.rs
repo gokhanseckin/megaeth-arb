@@ -38,7 +38,7 @@ pub struct PoolPoller<P, T> {
     provider: P,
     registry: Arc<PoolRegistry>,
     interval: Duration,
-    block_tx: watch::Sender<u64>,
+    block_tx: Arc<watch::Sender<u64>>,
     _t: std::marker::PhantomData<T>,
 }
 
@@ -58,7 +58,7 @@ where
         provider: P,
         registry: Arc<PoolRegistry>,
         interval: Duration,
-        block_tx: watch::Sender<u64>,
+        block_tx: Arc<watch::Sender<u64>>,
     ) -> Self {
         Self {
             provider,
@@ -69,7 +69,7 @@ where
         }
     }
 
-    pub async fn run(self) -> Result<()> {
+    pub async fn run(&self) -> Result<()> {
         // Initial backoff: doubles up to MAX_BACKOFF_MS on consecutive failures.
         const MIN_BACKOFF_MS: u64 = 200;
         const MAX_BACKOFF_MS: u64 = 5_000;

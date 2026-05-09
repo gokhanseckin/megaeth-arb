@@ -65,16 +65,29 @@ Use **Claude Opus 4.7 at high effort (not max)** for implementation work in this
 
 ## Git workflow (multi-session, self-verified)
 
-Multiple Claude sessions run in parallel worktrees. The user does not review code — Claude self-verifies before every merge.
+Multiple Claude sessions run in parallel worktrees. The user does not review code — Claude self-verifies before every merge. The hazards this section addresses are the real ones we've hit: stale PRs that drift from main, two sessions adding the same logical thing to a shared file, leftover worktrees blocking checkout.
 
 **Branching**
 - One worktree per session under `.claude/worktrees/<slug>`. Never edit another session's worktree.
 - Never commit on `main`. Branch first: `claude/<slug>` for session work, `phase-N/<topic>` for multi-session epics, `fix/<topic>` / `chore/<topic>` for short-lived work.
-- Rebase `main` into the branch before opening the PR.
+- **Pre-flight before checkout/work**: `git fetch origin && git worktree list`. If the target branch is already checked out elsewhere, do NOT clone it into a new worktree. Stop and resolve (most often: the other worktree is leftover state from a finished session — switch it to `main` and remove it).
 
 **Commits**
 - Small, single-concern. Co-author trailer on every Claude commit.
-- Don't `--amend` or rebase published commits. Don't `--no-verify` hooks.
+- Don't `--amend` or rebase published commits unless you own the branch lock (see below). Don't `--no-verify` hooks.
+
+**Shared-file edit protocol** (`CLAUDE.md`, `config/*.toml`, `Cargo.lock`, `foundry.toml`)
+1. `git fetch origin main && git rebase origin/main` BEFORE the first edit. Not just before PR open — before EACH session that will touch a shared file.
+2. After editing: re-run the rebase. If main moved during your edit, rebase again so the PR diff is minimal.
+3. Run the config lint (when added: `cargo run --bin lint_config`) before commit. It catches dup token addresses, casing drift, missing token0/token1 entries.
+4. `Cargo.lock`: prefer `cargo update -p <crate>` over bare `cargo update`.
+5. `[[pools]]` entries are append-only unless the user explicitly asks to remove one. `[[tokens]]` may be deduped.
+
+**Phase-N branch lock**
+- `phase-N/*` branches are shared by definition (multi-session epics). Default: only the session that opened the PR force-pushes; others wait.
+- A session that needs to rebase a stale `phase-N/*` onto current main MAY force-push iff: (a) it has run the full self-check gate locally on the rebased branch AND (b) `git worktree list` shows no other active worktree on that branch AND (c) the PR has no in-flight commits from another session in the last hour.
+- Document the force-push in the PR with `git log --pretty=oneline origin/phase-N/<topic>..HEAD` snapshot.
+- `claude/<slug>` branches: free force-push, you own them.
 
 **Self-check gate (must pass before merge)**
 Before merging any PR, Claude runs and reports:
@@ -82,6 +95,8 @@ Before merging any PR, Claude runs and reports:
 2. `cargo test --workspace` (and `forge test -vvv` if Solidity changed)
 3. The Rust↔Solidity parity test, if math files changed
 4. CI green on the PR
+5. **PR is up-to-date with main**: `gh pr view <N> --json mergeStateStatus` returns `CLEAN` AND the merge-base equals current `origin/main` HEAD. If main moved, rebase + re-run the gate. **A stale PR that GitHub calls `MERGEABLE` can still be semantically wrong** (e.g. two sessions independently adding the same token at different file positions — git's 3-way merge applies both, producing a duplicate).
+6. Config lint (when available) on shared files touched in the PR.
 
 If any fails, fix the cause; don't bypass. Report the green checklist in the PR body so the audit trail shows what was verified.
 
@@ -90,13 +105,12 @@ If any fails, fix the cause; don't bypass. Report the green checklist in the PR 
 - One concern per PR — narrow diffs merge cleanly across parallel sessions.
 - PR body: what changed, why, self-check results.
 - Claude may merge its own PR once the self-check gate passes.
+- **Don't let PRs sit stale.** If a PR has been open while main moved by ≥ 1 commit, the next session that touches the area must rebase it onto current main (or merge it first). Stale PRs become semantic-conflict landmines.
 
-**Parallel-session hazards**
-- Shared files (`CLAUDE.md`, `config/mainnet.toml`, `Cargo.lock`, `foundry.toml`): pull `main` immediately before editing, push immediately after.
-- Lockfile: prefer `cargo update -p <crate>` over bare `cargo update`.
-- Pool registry edits in `config/mainnet.toml` are append-only unless the user explicitly asks to remove an entry.
-- Force-push only your own `claude/<slug>` branch — never `main` or `phase-N/*`.
-- After merge: `git worktree remove <path>` + `git branch -d claude/<slug>`. Don't reuse a merged worktree.
+**Worktree lifecycle (cleanup is mandatory, not aspirational)**
+- After your PR merges: `git worktree remove <path>` AND `git branch -d claude/<slug>`. Don't reuse a merged worktree.
+- After a `phase-N/*` branch's PR merges: switch any worktree on it back to `main` (`git switch main` from inside that worktree), then `git branch -D phase-N/<topic>` if no other worktree references it.
+- A session encountering a worktree on a merged branch may clean it up (it's leftover state, not active work).
 
 **Handoff between sessions**
 - Mid-feature stop → push branch, open draft PR. The PR body is the git-side handoff (what's done, what's left). Cross-session memory of decisions and exploration is captured automatically by claude-mem; don't duplicate it in PR text or scratch files.

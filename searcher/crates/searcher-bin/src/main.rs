@@ -21,6 +21,7 @@ use searcher_core::{
     PoolStateView, V3Leg,
 };
 use searcher_net::abis::IUniswapV3Pool;
+use searcher_net::realtime::{HydrateFn, RealtimeClient};
 use searcher_net::PoolPoller;
 use searcher_pools::{PoolRegistry, V3PoolMeta};
 use serde::Deserialize;
@@ -38,9 +39,18 @@ struct Cli {
     #[arg(long, default_value_t = false, alias = "dry-run")]
     watch_only: bool,
 
-    /// Poll cadence in milliseconds (default 150).
+    /// HTTP poll cadence in milliseconds (default 150). Set to 0 to disable
+    /// the polling backstop and rely solely on the WebSocket subscriber
+    /// (note: detector staleness filter requires both legs at the same block,
+    /// so disabling polling without a tolerance window will reduce detection
+    /// rate — Phase 2 step 3 follow-up).
     #[arg(long, env = "SEARCHER_POLL_MS", default_value_t = 150)]
     poll_ms: u64,
+
+    /// Disable the Realtime API WebSocket subscriber. Useful for debugging
+    /// the HTTP path in isolation.
+    #[arg(long, default_value_t = false)]
+    no_realtime: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -517,16 +527,52 @@ async fn main() -> Result<()> {
     }
     let det_cfg = detector_config_from(&cfg.risk);
 
+    if cli.poll_ms == 0 && cli.no_realtime {
+        return Err(anyhow!(
+            "--poll-ms 0 AND --no-realtime: nothing would update pool state; refusing to start"
+        ));
+    }
+
     let (block_tx, mut block_rx) = watch::channel(0u64);
-    let poller = PoolPoller::new(
+    let block_tx = Arc::new(block_tx);
+    let poller = Arc::new(PoolPoller::new(
         provider,
         registry.clone(),
-        Duration::from_millis(cli.poll_ms),
-        block_tx,
-    );
+        Duration::from_millis(cli.poll_ms.max(1)),
+        block_tx.clone(),
+    ));
 
-    info!("starting pool poller");
-    let poller_handle = tokio::spawn(async move { poller.run().await });
+    let poller_handle = if cli.poll_ms > 0 {
+        info!(poll_ms = cli.poll_ms, "starting pool poller");
+        let p = poller.clone();
+        Some(tokio::spawn(async move { p.run().await }))
+    } else {
+        info!("pool poller disabled (--poll-ms 0); WS subscriber drives state with one-shot HTTP hydration on (re)connect");
+        None
+    };
+
+    let ws_handle = if !cli.no_realtime {
+        let watched: Vec<Address> = registry.meta().keys().copied().collect();
+        let hydrate: HydrateFn = {
+            let p = poller.clone();
+            Arc::new(move || {
+                let p = p.clone();
+                Box::pin(async move { p.tick().await.map(|_| ()) })
+            })
+        };
+        let realtime = RealtimeClient::new(
+            cfg.network.realtime_ws.clone(),
+            watched,
+            registry.clone(),
+            block_tx.clone(),
+            hydrate,
+        );
+        info!(url = %cfg.network.realtime_ws, "starting realtime ws subscriber");
+        Some(tokio::spawn(async move { realtime.run().await }))
+    } else {
+        info!("realtime ws subscriber disabled (--no-realtime)");
+        None
+    };
 
     let mut tracker = OpportunityTracker::new();
     let mut results: Vec<(String, Option<searcher_core::OpportunityQuote>)> =
@@ -534,7 +580,7 @@ async fn main() -> Result<()> {
 
     loop {
         if block_rx.changed().await.is_err() {
-            warn!("block_rx closed — poller exited");
+            warn!("block_rx closed — both poller and ws subscriber exited");
             break;
         }
         let block = *block_rx.borrow();
@@ -586,6 +632,11 @@ async fn main() -> Result<()> {
         }
     }
 
-    poller_handle.abort();
+    if let Some(h) = poller_handle {
+        h.abort();
+    }
+    if let Some(h) = ws_handle {
+        h.abort();
+    }
     Ok(())
 }

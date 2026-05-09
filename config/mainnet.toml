@@ -115,11 +115,6 @@ symbol   = "ezETH"
 address  = "0x09601A65e7de7BC8A19813D263dD9E98bFdC3c57"
 decimals = 18
 
-[[tokens]]
-symbol   = "MEGA"
-address  = "0x28b7e77f82b25b95953825f1e3ea0e36c1c29861"
-decimals = 18
-
 # Top 30 Kumbaya V3 pools by 24h volume (snapshot 2026-05-08, source: kumbaya.xyz UI).
 # `fee` is the V3-native value (hundredths of bps, e.g. 100 = 0.01%, 3000 = 0.30%).
 # Bps comment is for readability. `vol_24h_usd` is a screening metric, not an
