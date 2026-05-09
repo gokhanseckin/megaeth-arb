@@ -6,7 +6,7 @@
 
 ## Where we are
 
-Phase 0 (scaffold), Phase 1 (real addresses, 47 pools), and **Phase 2 step 1 (V3 single-tick swap math + byte-exact parity vs the Kumbaya USDT0/USDm 1bps pool)** are done.
+Phase 0 (scaffold), Phase 1 (real addresses, 47 pools), Phase 2 step 1 (V3 single-tick swap math + byte-exact parity vs the Kumbaya USDT0/USDm 1bps pool), Phase 2 step 2 (polling V3 pool state cache), and **Phase 2 steps 3-4 (opportunity detector + watch-only binary mode)** are done.
 
 What's already in:
 
@@ -67,25 +67,33 @@ MEGAETH_RPC=https://mainnet.megaeth.com/rpc REGEN_FIXTURES=1 \
 
 Multi-tick walking is still Phase 4 — at MVP loan sizes ($100–$1k in deep stablecoin pools) the swap stays inside the active tick.
 
-### 2. State ingestion (`searcher/crates/searcher-net/src/realtime.rs`)
+### 2. State ingestion (polling MVP) — ✅ done
 
-- Confirm the MegaETH Realtime WS endpoint and message format. Docs: <https://docs.megaeth.com/realtime-api>.
-- For MVP, **polling fallback is fine**: every 100-200ms, batch `eth_call` for `slot0()` + `liquidity()` on the watched pool set. Single-sequencer chain, so polling is consistent (no reorgs to worry about). Switch to WS state-diffs only when polling latency becomes the bottleneck.
+[searcher-net/src/poller.rs](../searcher/crates/searcher-net/src/poller.rs) batches `slot0()` + `liquidity()` for every watched pool, pinned to the same `BlockId`, decodes raw return bytes, and writes into `PoolRegistry` keyed by pool address. After all per-pool writes for a block land, it bumps the `last_block` watermark with release ordering. Exponential backoff on whole-batch failures (200ms → 5s). Per-pool failures retain prior cached state and log at `warn`. Realtime WS in [realtime.rs](../searcher/crates/searcher-net/src/realtime.rs) is still a stub — switch over once polling latency becomes the bottleneck.
 
-### 3. Opportunity detector (`searcher/crates/searcher-core/src/cycle.rs` extension)
+### 3. Opportunity detector — ✅ done
 
-- For each cross-venue same-pair-same-fee match in [config/mainnet.toml](../config/mainnet.toml), enumerate both directions of the cycle.
-- For a sweep of loan sizes, compute net edge.
-- If net > threshold, emit an `OpportunityOpened` event.
-- On state change, re-evaluate; if the same cycle no longer clears, emit `OpportunityClosed { lifetime_ms, peak_profit_usd, mean_profit_usd }`.
+[searcher-core/src/detector.rs](../searcher/crates/searcher-core/src/detector.rs) is a pure module — no I/O, no async. Public surface:
 
-### 4. Watch-only binary mode
+- `Candidate { id, borrow_token, borrow_decimals, legs: [V3Leg; 2] }` — one 2-leg cross-venue cycle.
+- `evaluate_candidate(cand, &state_a, &state_b, cfg, block) -> Result<Option<OpportunityQuote>, V3Error>` — sweeps loan sizes in `cfg.loan_sizes_usd`, returns the size with the highest net profit, or `None` if none clears the bar.
+- Net = `gross_profit - aave_premium(5bps) - gas_cost - max(min_profit, loan × safety_margin_bps/10_000)`. All comparisons in U256; floats only at log time.
+- `OpportunityTracker::record(results, now_ms) -> Vec<OpportunityEvent>` — turns per-tick `(id, Option<quote>)` into `Opened` / `Closed` events with lifetime, peak, mean, sample count. IDs absent from `results` (e.g. stale state skip) don't close.
 
-Add a `--watch-only` CLI flag (already pseudo-supported by the existing `--dry-run`; either rename or alias). In watch-only mode the binary skips any tx-building paths. Output one JSON line per event to stdout via `tracing` (already configured for JSON sink).
+### 4. Watch-only binary mode — ✅ done
 
-### 5. ArbExecutor V3 support — defer
+[searcher-bin/src/main.rs](../searcher/crates/searcher-bin/src/main.rs) builds candidates from the registry (groups by `(pair, fee_pips)`, requires ≥ 2 DEXs, filters borrow token to `aave.flashloan_assets`), spawns `PoolPoller::run` as a tokio task, and runs the detector loop on `block_rx.changed()`. Per-tick: snapshot state, skip candidates whose pool blocks aren't pinned to the current `last_block`, evaluate, feed results into the tracker, emit each event via `tracing::info!(target: "opportunity", …)`. The existing JSON subscriber serializes structured fields. Metrics: `opportunities_opened_total`, `opportunities_closed_total`, `opportunity_lifetime_ms`, `detector_skipped_stale_total`, `detector_open_opportunities`, `detector_eval_errors_total`.
 
-Don't add V3 to `ArbExecutor.sol` yet. We'll do that in Phase 3 once the watcher proves opportunities exist. Tracking it in [docs/PLAN.md](PLAN.md) Phase 3.
+Run:
+```bash
+MEGAETH_RPC=https://carrot.megaeth.com/rpc \
+    cargo run -p searcher-bin --release -- \
+      --config config/mainnet.toml --watch-only --poll-ms 150
+```
+
+### 5. Next — Phase 3
+
+ArbExecutor V3 support, tx building/signing in [searcher-exec](../searcher/crates/searcher-exec/), and live submission. Don't start until the watcher logs prove opportunities exist with a usable lifetime distribution. Tracking in [docs/PLAN.md](PLAN.md) Phase 3.
 
 ## Useful references
 
