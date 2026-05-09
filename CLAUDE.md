@@ -63,6 +63,45 @@ Authoritative addresses live in [config/mainnet.toml](config/mainnet.toml). Sour
 
 Use **Claude Opus 4.7 at high effort (not max)** for implementation work in this project. Switch with `/model claude-opus-4-7[1m]` if the session starts on a different model.
 
+## Git workflow (multi-session, self-verified)
+
+Multiple Claude sessions run in parallel worktrees. The user does not review code — Claude self-verifies before every merge.
+
+**Branching**
+- One worktree per session under `.claude/worktrees/<slug>`. Never edit another session's worktree.
+- Never commit on `main`. Branch first: `claude/<slug>` for session work, `phase-N/<topic>` for multi-session epics, `fix/<topic>` / `chore/<topic>` for short-lived work.
+- Rebase `main` into the branch before opening the PR.
+
+**Commits**
+- Small, single-concern. Co-author trailer on every Claude commit.
+- Don't `--amend` or rebase published commits. Don't `--no-verify` hooks.
+
+**Self-check gate (must pass before merge)**
+Before merging any PR, Claude runs and reports:
+1. `cargo fmt --check` and `cargo clippy --workspace --all-targets -- -D warnings`
+2. `cargo test --workspace` (and `forge test -vvv` if Solidity changed)
+3. The Rust↔Solidity parity test, if math files changed
+4. CI green on the PR
+
+If any fails, fix the cause; don't bypass. Report the green checklist in the PR body so the audit trail shows what was verified.
+
+**PRs as audit trail**
+- Every change reaches `main` via PR. No direct pushes to `main`.
+- One concern per PR — narrow diffs merge cleanly across parallel sessions.
+- PR body: what changed, why, self-check results.
+- Claude may merge its own PR once the self-check gate passes.
+
+**Parallel-session hazards**
+- Shared files (`CLAUDE.md`, `config/mainnet.toml`, `Cargo.lock`, `foundry.toml`): pull `main` immediately before editing, push immediately after.
+- Lockfile: prefer `cargo update -p <crate>` over bare `cargo update`.
+- Pool registry edits in `config/mainnet.toml` are append-only unless the user explicitly asks to remove an entry.
+- Force-push only your own `claude/<slug>` branch — never `main` or `phase-N/*`.
+- After merge: `git worktree remove <path>` + `git branch -d claude/<slug>`. Don't reuse a merged worktree.
+
+**Handoff between sessions**
+- Mid-feature stop → push branch, open draft PR. That's the handoff.
+- Durable context goes in PR body or claude-mem, never in WIP commits or untracked scratch files.
+
 ## Common Commands
 
 ```bash
