@@ -133,7 +133,21 @@ cargo test -p searcher-core cycle::          # single crate / module
 cargo bench -p searcher-core                 # criterion benchmarks
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --check
+
+# Watchers
+cargo run --bin searcher -- --config config/mainnet.toml --watch-only       # flash-loan watcher
+cargo run --bin cex-watcher -- --config config/cex-watcher.toml             # CEX↔DEX correlation logger
+cargo run --bin cex-watcher -- --config config/cex-watcher.toml --no-dex    # Binance-only smoke test (no MEGAETH_RPC_KEY needed)
 ```
+
+## Watchers
+
+Two independent watcher binaries share the workspace:
+
+- **`searcher`** (`searcher-bin`) — flash-loan opportunity detector against MegaETH V3 pools. Uses `config/mainnet.toml`.
+- **`cex-watcher`** (`searcher-cex-bin`) — CEX↔DEX correlation logger. Subscribes to Binance public WS (`aggTrade` + `bookTicker`) for ETHUSDT/BTCUSDT and to MegaETH state for the matching pools. Phase A scope is dual-stream JSON logging only — offline analysis decides whether the lead/lag is real before any correlator code lands. Uses `config/cex-watcher.toml`, which references `mainnet.toml` for the on-chain side so pool addresses are not duplicated.
+
+Library code is shared read-only via the `searcher-net` and `searcher-pools` crates; neither watcher edits the other's binary or config file.
 
 ## Environment
 
