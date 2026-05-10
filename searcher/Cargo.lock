@@ -3414,6 +3414,7 @@ dependencies = [
  "alloy-primitives",
  "anyhow",
  "clap",
+ "dashmap",
  "searcher-cex",
  "searcher-net",
  "searcher-pools",
