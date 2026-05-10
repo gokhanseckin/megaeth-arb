@@ -14,6 +14,8 @@ searcher-cex = { workspace = true }
 searcher-net = { workspace = true }
 searcher-pools = { workspace = true }
 
+dashmap = { workspace = true }
+
 alloy = { workspace = true }
 alloy-primitives = { workspace = true }
 tokio = { workspace = true }

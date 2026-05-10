@@ -16,6 +16,7 @@ use alloy::primitives::Address;
 use alloy::providers::{Provider, ProviderBuilder};
 use anyhow::{anyhow, Context, Result};
 use clap::Parser;
+use dashmap::DashMap;
 use searcher_cex::{
     load_cex_config, run_binance, sqrt_price_x96_to_price, BinanceConfig, CexEvent, PairMap, Side,
 };
@@ -87,7 +88,7 @@ fn init_tracing() {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-                "cex_watcher=info,searcher_cex=info,searcher_net=info,cex_trade=info,cex_quote=info,dex_quote=info".into()
+                "cex_watcher=info,searcher_cex=info,searcher_net=info,cex_trade=info,cex_quote=info,dex_quote=info,basis=info".into()
             }),
         )
         .with_target(true)
@@ -293,8 +294,14 @@ async fn main() -> Result<()> {
         }));
     }
 
-    // CEX event consumer: log every aggTrade and bookTicker.
+    // Shared latest CEX mid per symbol (mid_px, recv_ms). Read by the DEX
+    // loop to annotate every dex_quote with basis_bps vs Binance.
+    let cex_mids: Arc<DashMap<String, (f64, i64)>> = Arc::new(DashMap::new());
+
+    // CEX event consumer: log every aggTrade and bookTicker, and update
+    // the shared latest-mid map for the DEX loop to read.
     let min_trade_usd = cex_cfg.binance.min_trade_usd;
+    let cex_mids_for_consumer = cex_mids.clone();
     let cex_consumer = tokio::spawn(async move {
         while let Some(ev) = cex_rx.recv().await {
             match ev {
@@ -336,6 +343,7 @@ async fn main() -> Result<()> {
                     ask_qty,
                 } => {
                     let mid = (bid + ask) / 2.0;
+                    cex_mids_for_consumer.insert(symbol.clone(), (mid, recv_ms));
                     tracing::info!(
                         target: "cex_quote",
                         event = "book_ticker",
@@ -364,8 +372,18 @@ async fn main() -> Result<()> {
             .cloned()
             .ok_or_else(|| anyhow!("no rpc_urls in chain config"))?;
         let poll_ms = cli.poll_ms;
+        let cex_mids_for_dex = cex_mids.clone();
         Some(tokio::spawn(async move {
-            if let Err(e) = run_dex_loop(rpc_url, realtime_ws, chain, pair_map, poll_ms).await {
+            if let Err(e) = run_dex_loop(
+                rpc_url,
+                realtime_ws,
+                chain,
+                pair_map,
+                poll_ms,
+                cex_mids_for_dex,
+            )
+            .await
+            {
                 warn!(error = %e, "dex loop exited");
             }
         }))
@@ -386,12 +404,32 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+/// Cadence for `target=basis event=heartbeat` rows. Mirrors the flash-loan
+/// watcher's 5-min spread heartbeat: every interval, emit one row per pool
+/// summarizing the basis_bps distribution. Keeps the log honest if Binance
+/// or the pool goes quiet — empty heartbeats are still emitted.
+const BASIS_HEARTBEAT_INTERVAL_MS: u64 = 60_000;
+
+#[derive(Default)]
+struct BasisStats {
+    samples: u64,
+    sum_bps: f64,
+    abs_max_bps: f64,
+    min_bps: f64,
+    max_bps: f64,
+    last_basis_bps: f64,
+    last_dex_px: f64,
+    last_cex_mid: f64,
+    last_age_ms: i64,
+}
+
 async fn run_dex_loop(
     rpc_url: String,
     realtime_ws: String,
     chain: ChainConfig,
     pair_map: Vec<PairMap>,
     poll_ms: u64,
+    cex_mids: Arc<DashMap<String, (f64, i64)>>,
 ) -> Result<()> {
     let provider = ProviderBuilder::new().on_http(rpc_url.parse().context("rpc url")?);
     let registry = build_dex_registry(&provider, &chain, &pair_map).await?;
@@ -435,49 +473,122 @@ async fn run_dex_loop(
     info!(ws = %realtime_ws, "dex realtime subscriber started");
 
     let mut last_px: HashMap<Address, f64> = HashMap::new();
+    let mut stats: HashMap<Address, BasisStats> = HashMap::new();
+    let mut hb = tokio::time::interval(Duration::from_millis(BASIS_HEARTBEAT_INTERVAL_MS));
+    hb.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    hb.tick().await; // burn first immediate tick
+
     loop {
-        if block_rx.changed().await.is_err() {
-            return Err(anyhow!("dex block channel closed"));
+        tokio::select! {
+            biased;
+            _ = hb.tick() => {
+                emit_basis_heartbeat(&pricing, &registry, &mut stats);
+            }
+            res = block_rx.changed() => {
+                if res.is_err() {
+                    return Err(anyhow!("dex block channel closed"));
+                }
+                let block = *block_rx.borrow();
+                if block == 0 {
+                    continue;
+                }
+                let ts = now_ms();
+                for (addr, (binance_sym, base_addr)) in &pricing {
+                    let Some(state) = registry.get(addr) else { continue };
+                    if state.block_number != block { continue }
+                    let Some(meta) = registry.meta_for(addr) else { continue };
+                    let px = sqrt_price_x96_to_price(meta, state.sqrt_price_x96, *base_addr);
+                    if !px.is_finite() || px <= 0.0 { continue }
+
+                    let prev = last_px.insert(*addr, px).unwrap_or(0.0);
+                    let move_bps = if prev > 0.0 { ((px - prev) / prev) * 10_000.0 } else { 0.0 };
+
+                    // Annotate with CEX basis if a fresh Binance bookTicker exists.
+                    let (cex_mid, age_ms, basis_bps) = match cex_mids.get(binance_sym) {
+                        Some(v) => {
+                            let (mid, recv_ms) = *v;
+                            let age = ts - recv_ms;
+                            let basis = if mid > 0.0 { ((px - mid) / mid) * 10_000.0 } else { f64::NAN };
+                            (mid, age, basis)
+                        }
+                        None => (f64::NAN, -1, f64::NAN),
+                    };
+
+                    if basis_bps.is_finite() {
+                        let s = stats.entry(*addr).or_default();
+                        s.samples += 1;
+                        s.sum_bps += basis_bps;
+                        if basis_bps.abs() > s.abs_max_bps { s.abs_max_bps = basis_bps.abs(); }
+                        if s.samples == 1 || basis_bps < s.min_bps { s.min_bps = basis_bps; }
+                        if s.samples == 1 || basis_bps > s.max_bps { s.max_bps = basis_bps; }
+                        s.last_basis_bps = basis_bps;
+                        s.last_dex_px = px;
+                        s.last_cex_mid = cex_mid;
+                        s.last_age_ms = age_ms;
+                    }
+
+                    tracing::info!(
+                        target: "dex_quote",
+                        event = "quote",
+                        pool = %addr,
+                        pair = %meta.pair,
+                        dex = %meta.dex,
+                        fee_pips = meta.fee_pips,
+                        binance_symbol = %binance_sym,
+                        block = block,
+                        ts_ms = ts,
+                        px = px,
+                        move_bps = move_bps,
+                        cex_mid = cex_mid,
+                        cex_age_ms = age_ms,
+                        basis_bps = basis_bps,
+                        "dex quote"
+                    );
+                }
+            }
         }
-        let block = *block_rx.borrow();
-        if block == 0 {
+    }
+}
+
+fn emit_basis_heartbeat(
+    pricing: &HashMap<Address, (String, Address)>,
+    registry: &PoolRegistry,
+    stats: &mut HashMap<Address, BasisStats>,
+) {
+    for (addr, (binance_sym, _)) in pricing {
+        let Some(meta) = registry.meta_for(addr) else {
             continue;
-        }
-        let ts = now_ms();
-        for (addr, (binance_sym, base_addr)) in &pricing {
-            let Some(state) = registry.get(addr) else {
-                continue;
-            };
-            if state.block_number != block {
-                continue;
-            }
-            let Some(meta) = registry.meta_for(addr) else {
-                continue;
-            };
-            let px = sqrt_price_x96_to_price(meta, state.sqrt_price_x96, *base_addr);
-            if !px.is_finite() || px <= 0.0 {
-                continue;
-            }
-            let prev = last_px.insert(*addr, px).unwrap_or(0.0);
-            let move_bps = if prev > 0.0 {
-                ((px - prev) / prev) * 10_000.0
-            } else {
-                0.0
-            };
-            tracing::info!(
-                target: "dex_quote",
-                event = "quote",
-                pool = %addr,
-                pair = %meta.pair,
-                dex = %meta.dex,
-                fee_pips = meta.fee_pips,
-                binance_symbol = %binance_sym,
-                block = block,
-                ts_ms = ts,
-                px = px,
-                move_bps = move_bps,
-                "dex quote"
-            );
-        }
+        };
+        let s = stats.entry(*addr).or_default();
+        let mean_bps = if s.samples > 0 {
+            s.sum_bps / s.samples as f64
+        } else {
+            0.0
+        };
+        tracing::info!(
+            target: "basis",
+            event = "heartbeat",
+            pool = %addr,
+            pair = %meta.pair,
+            dex = %meta.dex,
+            binance_symbol = %binance_sym,
+            samples = s.samples,
+            mean_bps = mean_bps,
+            min_bps = s.min_bps,
+            max_bps = s.max_bps,
+            abs_max_bps = s.abs_max_bps,
+            last_basis_bps = s.last_basis_bps,
+            last_dex_px = s.last_dex_px,
+            last_cex_mid = s.last_cex_mid,
+            last_cex_age_ms = s.last_age_ms,
+            "basis heartbeat"
+        );
+        // Reset counters for next window; keep last_* fields so a quiet pool
+        // still shows its most recent observation.
+        s.samples = 0;
+        s.sum_bps = 0.0;
+        s.abs_max_bps = 0.0;
+        s.min_bps = 0.0;
+        s.max_bps = 0.0;
     }
 }
