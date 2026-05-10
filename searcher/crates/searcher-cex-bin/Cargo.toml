@@ -1,0 +1,27 @@
+[package]
+name = "searcher-cex-bin"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "cex-watcher"
+path = "src/main.rs"
+
+[dependencies]
+searcher-cex = { workspace = true }
+searcher-net = { workspace = true }
+searcher-pools = { workspace = true }
+
+alloy = { workspace = true }
+alloy-primitives = { workspace = true }
+tokio = { workspace = true }
+clap = { workspace = true }
+serde = { workspace = true }
+toml = { workspace = true }
+shellexpand = "3"
+
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }

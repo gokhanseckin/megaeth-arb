@@ -1,0 +1,66 @@
+# CEX↔DEX correlation watcher (Phase A: dual-stream logger).
+#
+# Independent of the flash-loan watcher. Re-uses mainnet.toml's [network],
+# [[tokens]], and [[pools]] for the on-chain side via dex_config_path —
+# pool addresses live in exactly one place.
+
+dex_config_path = "mainnet.toml"
+
+[binance]
+ws_url        = "wss://data-stream.binance.vision"
+rest_url      = "https://api.binance.com"
+symbols       = ["ETHUSDT", "BTCUSDT", "MEGAUSDT", "GNSUSDT", "USDEUSDT"]
+# Trades below this notional get logged with `small=true`. Useful filter for
+# the offline analyzer; we still record them so signal-vs-noise is visible.
+min_trade_usd = 5_000.0
+
+# Map each Binance symbol to a DEX pair label that appears in mainnet.toml's
+# [[pools]]. `base`/`quote` reference [[tokens]] symbols — they tell the
+# pricing helper which side to render quote-per-base on (e.g. USDm per WETH).
+[[pair_map]]
+binance  = "ETHUSDT"
+dex_pair = "WETH/USDm"
+base     = "WETH"
+quote    = "USDm"
+
+[[pair_map]]
+binance  = "ETHUSDT"
+dex_pair = "WETH/USDT0"
+base     = "WETH"
+quote    = "USDT0"
+
+[[pair_map]]
+binance  = "BTCUSDT"
+dex_pair = "BTC.b/USDm"
+base     = "BTCb"
+quote    = "USDm"
+
+# MEGA — Binance MEGAUSDT trades against USDT, we use the MEGA/USDm and
+# MEGA/USDT0 cross-venue pools (each has both kumbaya + prismfi sides).
+[[pair_map]]
+binance  = "MEGAUSDT"
+dex_pair = "MEGA/USDm"
+base     = "MEGA"
+quote    = "USDm"
+
+[[pair_map]]
+binance  = "MEGAUSDT"
+dex_pair = "MEGA/USDT0"
+base     = "MEGA"
+quote    = "USDT0"
+
+# GNS — single-DEX pool on kumbaya, no DEX↔DEX arb but useful for CEX↔DEX.
+[[pair_map]]
+binance  = "GNSUSDT"
+dex_pair = "GNS/USDm"
+base     = "GNS"
+quote    = "USDm"
+
+# USDe — stable. USDe/USDm is usually quiet, but a USDe depeg is exactly
+# the kind of event where CEX↔DEX arb spikes. Tracking the spread itself,
+# not directional moves.
+[[pair_map]]
+binance  = "USDEUSDT"
+dex_pair = "USDe/USDm"
+base     = "USDe"
+quote    = "USDm"

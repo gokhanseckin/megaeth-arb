@@ -6,6 +6,8 @@ members = [
     "crates/searcher-pools",
     "crates/searcher-exec",
     "crates/searcher-bin",
+    "crates/searcher-cex",
+    "crates/searcher-cex-bin",
 ]
 
 [workspace.package]
@@ -21,6 +23,7 @@ searcher-core   = { path = "crates/searcher-core" }
 searcher-net    = { path = "crates/searcher-net" }
 searcher-pools  = { path = "crates/searcher-pools" }
 searcher-exec   = { path = "crates/searcher-exec" }
+searcher-cex    = { path = "crates/searcher-cex" }
 
 # EVM stack — alloy supersedes ethers-rs and is the standard going forward.
 alloy           = { version = "0.8", features = ["full", "node-bindings"] }

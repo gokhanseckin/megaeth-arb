@@ -3389,6 +3389,43 @@ dependencies = [
 ]
 
 [[package]]
+name = "searcher-cex"
+version = "0.1.0"
+dependencies = [
+ "alloy-primitives",
+ "anyhow",
+ "futures",
+ "reqwest",
+ "searcher-pools",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-tungstenite",
+ "toml",
+ "tracing",
+]
+
+[[package]]
+name = "searcher-cex-bin"
+version = "0.1.0"
+dependencies = [
+ "alloy",
+ "alloy-primitives",
+ "anyhow",
+ "clap",
+ "searcher-cex",
+ "searcher-net",
+ "searcher-pools",
+ "serde",
+ "shellexpand",
+ "tokio",
+ "toml",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "searcher-core"
 version = "0.1.0"
 dependencies = [
