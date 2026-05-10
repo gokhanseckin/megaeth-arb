@@ -101,6 +101,11 @@ address  = "0x28B7E77f82B25B95953825F1E3eA0E36c1c29861"
 decimals = 18
 
 [[tokens]]
+symbol   = "GNS"
+address  = "0x551dfe38994ec53c9e7e18084d73893225eea3bf"
+decimals = 18
+
+[[tokens]]
 symbol   = "wstETH"
 address  = "0x601aC63637933D88285A025C685AC4e9a92a98dA"
 decimals = 18

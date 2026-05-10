@@ -9,7 +9,7 @@ dex_config_path = "mainnet.toml"
 [binance]
 ws_url        = "wss://data-stream.binance.vision"
 rest_url      = "https://api.binance.com"
-symbols       = ["ETHUSDT", "BTCUSDT"]
+symbols       = ["ETHUSDT", "BTCUSDT", "MEGAUSDT", "GNSUSDT"]
 # Trades below this notional get logged with `small=true`. Useful filter for
 # the offline analyzer; we still record them so signal-vs-noise is visible.
 min_trade_usd = 5_000.0
@@ -33,4 +33,25 @@ quote    = "USDT0"
 binance  = "BTCUSDT"
 dex_pair = "BTC.b/USDm"
 base     = "BTCb"
+quote    = "USDm"
+
+# MEGA — Binance MEGAUSDT trades against USDT, we use the MEGA/USDm and
+# MEGA/USDT0 cross-venue pools (each has both kumbaya + prismfi sides).
+[[pair_map]]
+binance  = "MEGAUSDT"
+dex_pair = "MEGA/USDm"
+base     = "MEGA"
+quote    = "USDm"
+
+[[pair_map]]
+binance  = "MEGAUSDT"
+dex_pair = "MEGA/USDT0"
+base     = "MEGA"
+quote    = "USDT0"
+
+# GNS — single-DEX pool on kumbaya, no DEX↔DEX arb but useful for CEX↔DEX.
+[[pair_map]]
+binance  = "GNSUSDT"
+dex_pair = "GNS/USDm"
+base     = "GNS"
 quote    = "USDm"
