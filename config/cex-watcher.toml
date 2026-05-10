@@ -9,7 +9,7 @@ dex_config_path = "mainnet.toml"
 [binance]
 ws_url        = "wss://data-stream.binance.vision"
 rest_url      = "https://api.binance.com"
-symbols       = ["ETHUSDT", "BTCUSDT", "MEGAUSDT", "GNSUSDT"]
+symbols       = ["ETHUSDT", "BTCUSDT", "MEGAUSDT", "GNSUSDT", "USDEUSDT"]
 # Trades below this notional get logged with `small=true`. Useful filter for
 # the offline analyzer; we still record them so signal-vs-noise is visible.
 min_trade_usd = 5_000.0
@@ -54,4 +54,13 @@ quote    = "USDT0"
 binance  = "GNSUSDT"
 dex_pair = "GNS/USDm"
 base     = "GNS"
+quote    = "USDm"
+
+# USDe — stable. USDe/USDm is usually quiet, but a USDe depeg is exactly
+# the kind of event where CEX↔DEX arb spikes. Tracking the spread itself,
+# not directional moves.
+[[pair_map]]
+binance  = "USDEUSDT"
+dex_pair = "USDe/USDm"
+base     = "USDe"
 quote    = "USDm"
